@@ -1,0 +1,152 @@
+---
+title: "Hexagonal architecture"
+description: "How Ubik Backend applies ports-and-adapters to isolate business logic from frameworks, databases, and HTTP controllers."
+---
+
+Every microservice in Ubik Backend follows the **hexagonal architecture** pattern (also called ports-and-adapters). The goal is to keep domain logic free from any dependency on Spring, databases, or HTTP — making it independently testable and allowing infrastructure details to be swapped without touching business rules.
+
+## Core concept
+
+The application is divided into three zones:
+
+- **Domain** — pure Java classes and interfaces with zero framework dependencies.
+- **Application** — orchestrates use cases by combining domain services and ports.
+- **Infrastructure** — Spring components, R2DBC repositories, HTTP controllers, and external API clients.
+
+Communication between zones always crosses a **port** (a Java interface). Adapters implement those ports on the infrastructure side.
+
+## Package structure
+
+The motel management service illustrates the standard layout:
+
+```
+com.ubik.motelmanagement/
+├── domain/
+│   ├── model/                     # Pure domain entities (records, enums)
+│   │   └── Motel.java
+│   ├── port/
+│   │   ├── in/                    # Input ports: what the domain exposes
+│   │   │   └── MotelUseCasePort.java
+│   │   └── out/                   # Output ports: what the domain needs
+│   │       └── MotelRepositoryPort.java
+│   └── service/                   # Domain services implementing input ports
+│       └── MotelService.java
+└── infrastructure/
+    ├── adapter/
+    │   ├── in/
+    │   │   └── web/controller/    # HTTP adapters (Spring WebFlux controllers)
+    │   │       └── MotelController.java
+    │   └── out/
+    │       └── persistence/       # Database adapters (R2DBC repositories)
+    └── client/                    # Outbound HTTP clients (WebClient)
+        └── NotificationClient.java
+```
+
+## Input port: MotelUseCasePort
+
+Input ports define the operations the domain makes available to the outside world. They are pure interfaces with no Spring annotations:
+
+```java
+// domain/port/in/MotelUseCasePort.java
+public interface MotelUseCasePort {
+
+    /** Creates a new motel. */
+    Mono<Motel> createMotel(Motel motel);
+
+    /** Returns a motel by ID, or errors if not found. */
+    Mono<Motel> getMotelById(Long id);
+
+    /** Returns all motels. */
+    Flux<Motel> getAllMotels();
+
+    /** Returns motels in a given city. */
+    Flux<Motel> getMotelsByCity(String city);
+
+    /** Returns motels owned by a given property ID. */
+    Flux<Motel> getMotelsByPropertyId(Long propertyId);
+
+    /** Updates an existing motel. */
+    Mono<Motel> updateMotel(Long id, Motel motel);
+
+    /** Deletes a motel. */
+    Mono<Void> deleteMotel(Long id);
+}
+```
+
+## Output port: MotelRepositoryPort
+
+Output ports describe what the domain **needs** from the outside — in this case, a persistence store. The domain service depends on this interface, not on any Spring Data repository:
+
+```java
+// domain/port/out/MotelRepositoryPort.java
+public interface MotelRepositoryPort {
+    Mono<Motel>    save(Motel motel);
+    Mono<Motel>    findById(Long id);
+    Flux<Motel>    findAll();
+    Flux<Motel>    findByCity(String city);
+    Flux<Motel>    findByPropertyId(Long propertyId);
+    Mono<Motel>    update(Motel motel);
+    Mono<Void>     deleteById(Long id);
+    Mono<Boolean>  existsById(Long id);
+}
+```
+
+## Domain service: MotelService
+
+`MotelService` implements `MotelUseCasePort` and depends solely on `MotelRepositoryPort`. Business validations (required fields, coordinate ranges, image limits) live here:
+
+```java
+// domain/service/MotelService.java
+@Service
+public class MotelService implements MotelUseCasePort {
+
+    private final MotelRepositoryPort motelRepositoryPort;
+
+    public MotelService(MotelRepositoryPort motelRepositoryPort) {
+        this.motelRepositoryPort = motelRepositoryPort;
+    }
+
+    @Override
+    public Mono<Motel> getMotelById(Long id) {
+        return motelRepositoryPort.findById(id)
+                .switchIfEmpty(Mono.error(
+                    new RuntimeException("Motel no encontrado con ID: " + id)));
+    }
+
+    @Override
+    public Mono<Motel> createMotel(Motel motel) {
+        return validateMotel(motel)
+                .then(motelRepositoryPort.save(motel));
+    }
+    // ...
+}
+```
+
+## Dependency flow
+
+```
+MotelController  →  MotelUseCasePort  ←  MotelService
+                                              ↓
+                                    MotelRepositoryPort
+                                              ↑
+                                  R2dbcMotelRepositoryAdapter
+```
+
+Arrows point in the direction of dependency. `MotelService` never imports `MotelController` or any R2DBC class — the domain is completely isolated.
+
+## Benefits in practice
+
+<CardGroup cols={2}>
+  <Card title="Testability" icon="flask">
+    Domain services can be unit-tested with mock implementations of the output ports. No Spring context, no database, no network.
+  </Card>
+  <Card title="Swappable adapters" icon="arrows-rotate">
+    Replacing PostgreSQL with another database requires only a new implementation of `MotelRepositoryPort`. The domain and HTTP layer are untouched.
+  </Card>
+  <Card title="Business logic isolation" icon="shield">
+    Validation rules (e.g., max 10 images, valid coordinate ranges) live exclusively in the domain service, not scattered across controllers or database triggers.
+  </Card>
+  <Card title="Framework independence" icon="plug">
+    The `Motel` record and `MotelUseCasePort` interface have zero Spring imports. They compile and run without Spring on the classpath.
+  </Card>
+</CardGroup>

@@ -1,0 +1,144 @@
+---
+title: "POST /api/reservations"
+description: "Create a new room reservation"
+---
+
+## Overview
+
+Creates a new reservation for a room. The authenticated user's identity is resolved automatically from the JWT token — the `userId` is **not** sent in the request body. The gateway extracts the username from the JWT and passes it as the `X-User-Username` header; the Motel Management service then looks up the internal user ID from the database.
+
+A unique `confirmationCode` is generated server-side and returned in the response.
+
+## Request
+
+**Method:** POST  
+**Path:** `/api/reservations`  
+**Auth required:** Yes  
+
+<Note>
+  The gateway forwards your identity as the `X-User-Username` header derived from your JWT. You do not need to include a `userId` in the request body.
+</Note>
+
+### Request body
+
+<ParamField body="roomId" type="long" required>
+  The ID of the room to reserve.
+</ParamField>
+
+<ParamField body="checkInDate" type="string (ISO 8601 datetime)" required>
+  The requested check-in date and time. Must be a future datetime. Example: `2026-03-20T15:00:00`.
+</ParamField>
+
+<ParamField body="checkOutDate" type="string (ISO 8601 datetime)" required>
+  The requested check-out date and time. Must be a future datetime and after `checkInDate`. Example: `2026-03-21T11:00:00`.
+</ParamField>
+
+<ParamField body="totalPrice" type="double" required>
+  The total price for the stay. Must be a positive number.
+</ParamField>
+
+<ParamField body="specialRequests" type="string">
+  Optional special requests or notes for the reservation. Maximum 500 characters.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X POST http://localhost:8080/api/reservations \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "roomId": 12,
+    "checkInDate": "2026-03-20T15:00:00",
+    "checkOutDate": "2026-03-21T11:00:00",
+    "totalPrice": 250000,
+    "specialRequests": "Late check-in requested"
+  }'
+```
+
+## Response
+
+**Status:** 201 Created
+
+<ResponseField name="id" type="long">
+  The unique identifier of the reservation.
+</ResponseField>
+
+<ResponseField name="roomId" type="long">
+  The ID of the reserved room.
+</ResponseField>
+
+<ResponseField name="userId" type="long">
+  The internal user ID resolved from the authenticated user's username.
+</ResponseField>
+
+<ResponseField name="checkInDate" type="string (ISO 8601 datetime)">
+  The confirmed check-in date and time.
+</ResponseField>
+
+<ResponseField name="checkOutDate" type="string (ISO 8601 datetime)">
+  The confirmed check-out date and time.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  The current reservation status. New reservations always start as `PENDING`.
+</ResponseField>
+
+<ResponseField name="totalPrice" type="double">
+  The total price for the reservation.
+</ResponseField>
+
+<ResponseField name="specialRequests" type="string">
+  Any special requests recorded for this reservation.
+</ResponseField>
+
+<ResponseField name="confirmationCode" type="string">
+  A unique server-generated confirmation code for this reservation.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string (ISO 8601 datetime)">
+  Timestamp of when the reservation was created.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string (ISO 8601 datetime)">
+  Timestamp of the last update to the reservation.
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "id": 47,
+  "roomId": 12,
+  "userId": 3,
+  "checkInDate": "2026-03-20T15:00:00",
+  "checkOutDate": "2026-03-21T11:00:00",
+  "status": "PENDING",
+  "totalPrice": 250000.0,
+  "specialRequests": "Late check-in requested",
+  "confirmationCode": "UBIK-20260317-0042",
+  "createdAt": "2026-03-17T10:30:00",
+  "updatedAt": "2026-03-17T10:30:00"
+}
+```
+
+## Reservation lifecycle
+
+All reservations begin in `PENDING` status. The full lifecycle is:
+
+| Status | Description |
+|--------|-------------|
+| `PENDING` | Reservation created, awaiting confirmation |
+| `CONFIRMED` | Reservation confirmed (also set automatically on approved payment) |
+| `CHECKED_IN` | Guest has checked in |
+| `CHECKED_OUT` | Guest has checked out |
+| `CANCELLED` | Reservation was cancelled |
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Validation failed — missing required fields, non-positive price, non-future dates, or `specialRequests` exceeding 500 characters |
+| 401 | Missing or invalid JWT token; `X-User-Username` header not present |
+| 404 | Authenticated user not found in the database |
+| 500 | Internal server error |

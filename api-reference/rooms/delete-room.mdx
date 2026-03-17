@@ -1,0 +1,55 @@
+---
+title: "DELETE /api/rooms/{id}"
+description: "Permanently delete a room by its ID. Requires authentication."
+---
+
+## Overview
+
+Permanently removes a room from the system. This operation is irreversible. Authentication is required — the request must include the `X-User-Username` header forwarded by the API gateway.
+
+<Warning>
+  Deleting a room is permanent. Ensure no active bookings reference the room before deleting it.
+</Warning>
+
+## Request
+
+**Method:** `DELETE`  
+**Path:** `/api/rooms/{id}`  
+**Auth required:** Yes  
+**Required role:** Authenticated (PROPERTY_OWNER or ADMIN)
+
+### Required headers
+
+<ParamField header="X-User-Username" type="string" required>
+  The username of the authenticated user, forwarded by the API gateway.
+</ParamField>
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token issued by the authentication service.
+</ParamField>
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The unique identifier of the room to delete.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X DELETE http://localhost:8080/api/rooms/99 \
+  -H "Authorization: Bearer <token>" \
+  -H "X-User-Username: owner_user"
+```
+
+## Response
+
+**Status:** `204 No Content`  
+The response body is empty on success.
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 401 | Missing `X-User-Username` header |
+| 404 | No room found with the given `id` |

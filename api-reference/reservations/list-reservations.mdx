@@ -1,0 +1,162 @@
+---
+title: "GET /api/reservations"
+description: "List all reservations and check room availability"
+---
+
+## Overview
+
+This page covers two endpoints: retrieving the full list of all reservations in the system, and checking whether a specific room is available for a given date range.
+
+---
+
+## GET /api/reservations
+
+Returns all reservations across all rooms, users, and statuses. Intended primarily for administrative use.
+
+**Method:** GET  
+**Path:** `/api/reservations`  
+**Auth required:** Yes  
+
+### Example request
+
+```bash
+curl http://localhost:8080/api/reservations \
+  -H "Authorization: Bearer <token>"
+```
+
+### Example response
+
+**Status:** 200 OK — returns a JSON array
+
+```json
+[
+  {
+    "id": 1,
+    "roomId": 5,
+    "userId": 2,
+    "checkInDate": "2026-03-18T15:00:00",
+    "checkOutDate": "2026-03-19T11:00:00",
+    "status": "CONFIRMED",
+    "totalPrice": 180000.0,
+    "specialRequests": null,
+    "confirmationCode": "UBIK-20260316-0001",
+    "createdAt": "2026-03-16T09:00:00",
+    "updatedAt": "2026-03-16T09:30:00"
+  },
+  {
+    "id": 47,
+    "roomId": 12,
+    "userId": 3,
+    "checkInDate": "2026-03-20T15:00:00",
+    "checkOutDate": "2026-03-21T11:00:00",
+    "status": "PENDING",
+    "totalPrice": 250000.0,
+    "specialRequests": "Late check-in requested",
+    "confirmationCode": "UBIK-20260317-0042",
+    "createdAt": "2026-03-17T10:30:00",
+    "updatedAt": "2026-03-17T10:30:00"
+  }
+]
+```
+
+<Note>
+  This endpoint returns all reservations without pagination. For large datasets, consider filtering by user, room, or status using the more targeted endpoints.
+</Note>
+
+---
+
+## GET /api/reservations/room/{roomId}/available
+
+Checks whether a specific room is available (has no active conflicting reservations) for a given check-in and check-out window. Returns a boolean.
+
+**Method:** GET  
+**Path:** `/api/reservations/room/{roomId}/available`  
+**Auth required:** Yes  
+
+### Path parameters
+
+<ParamField path="roomId" type="long" required>
+  The ID of the room to check availability for.
+</ParamField>
+
+### Query parameters
+
+<ParamField query="checkIn" type="string (ISO 8601 datetime)" required>
+  The desired check-in date and time. Must be in ISO 8601 format without a timezone offset. Example: `2026-03-20T15:00:00`.
+</ParamField>
+
+<ParamField query="checkOut" type="string (ISO 8601 datetime)" required>
+  The desired check-out date and time. Must be in ISO 8601 format without a timezone offset. Example: `2026-03-21T11:00:00`.
+</ParamField>
+
+### Example request
+
+```bash
+curl "http://localhost:8080/api/reservations/room/12/available?checkIn=2026-03-20T15:00:00&checkOut=2026-03-21T11:00:00" \
+  -H "Authorization: Bearer <token>"
+```
+
+### Example response
+
+**Status:** 200 OK
+
+```json
+true
+```
+
+Returns `true` if the room has no active reservations overlapping with the requested period. Returns `false` if the room is already booked for any part of that window.
+
+---
+
+## Response fields (reservation list)
+
+<ResponseField name="id" type="long">
+  Unique reservation ID.
+</ResponseField>
+
+<ResponseField name="roomId" type="long">
+  ID of the reserved room.
+</ResponseField>
+
+<ResponseField name="userId" type="long">
+  ID of the user who made the reservation.
+</ResponseField>
+
+<ResponseField name="checkInDate" type="string (ISO 8601 datetime)">
+  Check-in date and time.
+</ResponseField>
+
+<ResponseField name="checkOutDate" type="string (ISO 8601 datetime)">
+  Check-out date and time.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status: `PENDING`, `CONFIRMED`, `CHECKED_IN`, `CHECKED_OUT`, or `CANCELLED`.
+</ResponseField>
+
+<ResponseField name="totalPrice" type="double">
+  Total price for the stay.
+</ResponseField>
+
+<ResponseField name="specialRequests" type="string">
+  Special requests, or `null` if none.
+</ResponseField>
+
+<ResponseField name="confirmationCode" type="string">
+  Server-generated confirmation code.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string (ISO 8601 datetime)">
+  Creation timestamp.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string (ISO 8601 datetime)">
+  Last update timestamp.
+</ResponseField>
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Malformed or missing `checkIn`/`checkOut` query parameters |
+| 401 | Missing or invalid authentication token |

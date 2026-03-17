@@ -1,122 +1,139 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Ubik Backend",
+  "theme": "sequoia",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#4F46E5",
+    "light": "#818CF8",
+    "dark": "#1E1B4B"
   },
   "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/ubik-back/ubik-backend"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/ubik-back/ubik-backend"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart", "architecture"]
+          },
+          {
+            "group": "Microservices",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "services/gateway",
+              "services/user-management",
+              "services/motel-management",
+              "services/notification-service",
+              "services/payment-service"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/authentication",
+              "concepts/authorization",
+              "concepts/hexagonal-architecture",
+              "concepts/reactive-programming"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Deployment",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
-            ]
-          },
-          {
-            "group": "AI tools",
-            "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "deployment/docker-compose",
+              "deployment/environment-variables",
+              "deployment/azure"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Authentication",
             "pages": [
-              "api-reference/introduction"
+              "api-reference/auth/register",
+              "api-reference/auth/login",
+              "api-reference/auth/reset-password"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "User Profile",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api-reference/users/get-profile",
+              "api-reference/users/update-profile",
+              "api-reference/users/delete-profile"
+            ]
+          },
+          {
+            "group": "Motels",
+            "pages": [
+              "api-reference/motels/list-motels",
+              "api-reference/motels/get-motel",
+              "api-reference/motels/create-motel",
+              "api-reference/motels/update-motel",
+              "api-reference/motels/delete-motel"
+            ]
+          },
+          {
+            "group": "Admin",
+            "pages": [
+              "api-reference/admin/pending-motels",
+              "api-reference/admin/approve-motel",
+              "api-reference/admin/reject-motel",
+              "api-reference/admin/statistics"
+            ]
+          },
+          {
+            "group": "Rooms",
+            "pages": [
+              "api-reference/rooms/list-rooms",
+              "api-reference/rooms/get-room",
+              "api-reference/rooms/create-room",
+              "api-reference/rooms/update-room",
+              "api-reference/rooms/delete-room"
+            ]
+          },
+          {
+            "group": "Services",
+            "pages": [
+              "api-reference/services/list-services",
+              "api-reference/services/create-service",
+              "api-reference/services/room-services"
+            ]
+          },
+          {
+            "group": "Reservations",
+            "pages": [
+              "api-reference/reservations/create-reservation",
+              "api-reference/reservations/get-reservation",
+              "api-reference/reservations/list-reservations",
+              "api-reference/reservations/update-reservation",
+              "api-reference/reservations/reservation-actions"
+            ]
+          },
+          {
+            "group": "Payments",
+            "pages": [
+              "api-reference/payments/create-payment",
+              "api-reference/payments/get-payment",
+              "api-reference/payments/refund-payment",
+              "api-reference/payments/webhook"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

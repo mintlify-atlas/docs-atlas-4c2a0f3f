@@ -1,0 +1,159 @@
+---
+title: "POST /api/motels"
+description: "Create a new motel listing. Requires PROPERTY_OWNER or ADMIN role."
+---
+
+## Overview
+
+Creates a new motel record. The authenticated user must hold the `PROPERTY_OWNER` or `ADMIN` role. The `propertyId` is automatically derived from the authenticated user's account — any `propertyId` value supplied in the request body is ignored. New motels are created with `approvalStatus` set to `PENDING`.
+
+<Note>
+  The gateway forwards the authenticated user's username in the `X-User-Username` header and their role ID in the `X-User-Role` header. These headers are set automatically and must not be spoofed.
+</Note>
+
+## Request
+
+**Method:** POST  
+**Path:** `/api/motels`  
+**Auth required:** Yes (Bearer token)  
+**Required role:** PROPERTY_OWNER or ADMIN
+
+### Request body
+
+<ParamField body="name" type="string" required>
+  Name of the motel. Between 3 and 100 characters.
+</ParamField>
+
+<ParamField body="address" type="string" required>
+  Street address. Maximum 255 characters.
+</ParamField>
+
+<ParamField body="city" type="string" required>
+  City where the motel is located. Maximum 100 characters.
+</ParamField>
+
+<ParamField body="rues" type="string" required>
+  Registro Único Empresarial y Social number. Maximum 100 characters.
+</ParamField>
+
+<ParamField body="rnt" type="string" required>
+  Registro Nacional de Turismo number. Maximum 100 characters.
+</ParamField>
+
+<ParamField body="ownerDocumentType" type="string" required>
+  Identity document type of the owner. One of: `CC`, `NIT`, `CE`, `PASAPORTE`.
+</ParamField>
+
+<ParamField body="ownerDocumentNumber" type="string" required>
+  Owner's identity document number. Maximum 50 characters.
+</ParamField>
+
+<ParamField body="ownerFullName" type="string" required>
+  Full legal name of the owner. Maximum 200 characters.
+</ParamField>
+
+<ParamField body="phoneNumber" type="string">
+  Contact phone number. Maximum 20 characters.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Description of the motel. Maximum 500 characters.
+</ParamField>
+
+<ParamField body="imageUrls" type="array">
+  List of image URL strings. Maximum 10 items; each URL up to 500 characters.
+</ParamField>
+
+<ParamField body="latitude" type="number">
+  Geographic latitude of the motel. Must be between -90 and 90.
+</ParamField>
+
+<ParamField body="longitude" type="number">
+  Geographic longitude of the motel. Must be between -180 and 180.
+</ParamField>
+
+<ParamField body="legalRepresentativeName" type="string">
+  Name of the legal representative, if applicable. Maximum 200 characters.
+</ParamField>
+
+<ParamField body="legalDocumentUrl" type="string">
+  URL of the primary legal document. Maximum 500 characters.
+</ParamField>
+
+<ParamField body="propertyId" type="integer">
+  This field is accepted but **ignored**. The server always assigns `propertyId` from the authenticated user.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X POST http://localhost:8080/api/motels \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Motel El Descanso",
+    "address": "Carrera 15 # 80-22",
+    "city": "Medellin",
+    "phoneNumber": "+574041234567",
+    "description": "Cozy rooms near the city center",
+    "imageUrls": ["https://cdn.example.com/img1.jpg"],
+    "latitude": 6.2442,
+    "longitude": -75.5812,
+    "rues": "800987654-2",
+    "rnt": "05-RNT-5678",
+    "ownerDocumentType": "CC",
+    "ownerDocumentNumber": "9876543210",
+    "ownerFullName": "Maria Fernanda Rios",
+    "legalRepresentativeName": null,
+    "legalDocumentUrl": "https://cdn.example.com/legal.pdf"
+  }'
+```
+
+## Response
+
+**Status:** 201 Created
+
+Returns the newly created motel object. `approvalStatus` will be `PENDING`.
+
+### Response body
+
+See [MotelResponse fields](/api-reference/motels/get-motel#response-body) for a full description of all fields.
+
+### Example response
+
+```json
+{
+  "id": 12,
+  "name": "Motel El Descanso",
+  "address": "Carrera 15 # 80-22",
+  "phoneNumber": "+574041234567",
+  "description": "Cozy rooms near the city center",
+  "city": "Medellin",
+  "propertyId": 7,
+  "dateCreated": "2024-06-10T11:20:00",
+  "imageUrls": ["https://cdn.example.com/img1.jpg"],
+  "latitude": 6.2442,
+  "longitude": -75.5812,
+  "approvalStatus": "PENDING",
+  "approvalDate": null,
+  "approvedByUserId": null,
+  "rejectionReason": null,
+  "rues": "800987654-2",
+  "rnt": "05-RNT-5678",
+  "ownerDocumentType": "CC",
+  "ownerDocumentNumber": "9876543210",
+  "ownerFullName": "Maria Fernanda Rios",
+  "legalRepresentativeName": null,
+  "legalDocumentUrl": "https://cdn.example.com/legal.pdf",
+  "hasCompleteLegalInfo": true
+}
+```
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Validation error — a required field is missing or a constraint is violated |
+| 401 | Missing or invalid JWT, or `X-User-Username` header is absent |
+| 403 | Authenticated user does not have PROPERTY_OWNER or ADMIN role |
+| 404 | The authenticated username was not found in the user database |

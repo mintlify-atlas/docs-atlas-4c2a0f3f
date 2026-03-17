@@ -1,0 +1,136 @@
+---
+title: "Authorization"
+description: "Role-based access control in Ubik Backend: how roles are defined, propagated by the gateway, and enforced by downstream services."
+---
+
+Ubik uses role-based access control (RBAC). Every authenticated user carries a numeric role ID in their JWT token. The gateway propagates that role to downstream services via the `X-User-Role` header, where each service applies its own access rules.
+
+## Roles
+
+Three roles are defined in `RoleConstants`:
+
+| Role | Env var | Default ID | Description |
+|---|---|---|---|
+| `ADMIN` | `ROLE_ID_ADMIN` | `7392841056473829` | Platform administrators; unrestricted access |
+| `PROPERTY_OWNER` | `ROLE_ID_PROPERTY_OWNER` | `3847261094857362` | Motel owners; manage their own properties |
+| `USER` | `ROLE_ID_USER` | `9182736450192837` | Regular guests; make reservations and payments |
+
+<Warning>
+  The default role IDs in source code are placeholders for local development. **Always override them with strong, unique values via environment variables in any deployed environment.** Sharing the same IDs across environments is a security risk.
+</Warning>
+
+## Configuring role IDs
+
+Set the three environment variables on both the gateway and the motel management service:
+
+```bash
+ROLE_ID_ADMIN=7392841056473829
+ROLE_ID_PROPERTY_OWNER=3847261094857362
+ROLE_ID_USER=9182736450192837
+```
+
+In `docker-compose.yml`, these are passed to `gateway` and `motel-management-service`:
+
+```yaml
+environment:
+  ROLE_ID_ADMIN: ${ROLE_ID_ADMIN}
+  ROLE_ID_PROPERTY_OWNER: ${ROLE_ID_PROPERTY_OWNER}
+  ROLE_ID_USER: ${ROLE_ID_USER}
+```
+
+## How the gateway injects the role
+
+After validating the JWT, `JwtAuthenticationFilter` reads the `role` claim and adds it to every forwarded request:
+
+```java
+// gateway/.../JwtAuthenticationFilter.java
+ServerHttpRequest mutatedRequest = exchange.getRequest()
+        .mutate()
+        .header("X-User-Username", username)
+        .header("X-User-Role", role)
+        .header("X-User-Id", userId)
+        .build();
+```
+
+The `SecurityConfig` additionally enforces admin-only access at the gateway level for `/api/admin/motels/**`:
+
+```java
+.pathMatchers("/api/admin/motels/**").hasAuthority("ROLE_" + ROLE_ID_ADMIN)
+```
+
+## How downstream services read the role
+
+Downstream services read `X-User-Role` directly from request headers. The `MotelController` is a canonical example:
+
+```java
+// motelManagement/.../MotelController.java
+@PostMapping
+@ResponseStatus(HttpStatus.CREATED)
+public Mono<MotelResponse> createMotel(
+        @Valid @RequestBody CreateMotelRequest request,
+        ServerWebExchange exchange) {
+
+    String username = exchange.getRequest().getHeaders().getFirst("X-User-Username");
+    String role     = exchange.getRequest().getHeaders().getFirst("X-User-Role");
+
+    // Only admin and property owner may create motels
+    if (!isAdmin(role) && !isPropertyOwner(role)) {
+        return Mono.error(new ResponseStatusException(
+                HttpStatus.FORBIDDEN, "No tienes permiso para crear moteles"));
+    }
+    // ...
+}
+
+private boolean isAdmin(String role) {
+    return roleIdAdmin != null && roleIdAdmin.equals(role);
+}
+
+private boolean isPropertyOwner(String role) {
+    return roleIdPropertyOwner != null && roleIdPropertyOwner.equals(role);
+}
+```
+
+## Endpoint access matrix
+
+| Endpoint | Method | Required role |
+|---|---|---|
+| `/api/auth/**` | Any | Public (no auth) |
+| `GET /api/motels/**` | GET | Public |
+| `GET /api/rooms/**` | GET | Public |
+| `GET /api/services/**` | GET | Public |
+| `/api/admin/motels/**` | Any | `ADMIN` only |
+| `POST /api/motels` | POST | `ADMIN` or `PROPERTY_OWNER` |
+| `PUT /api/motels/{id}` | PUT | `ADMIN` (any motel) or `PROPERTY_OWNER` (own motels only) |
+| `DELETE /api/motels/{id}` | DELETE | `ADMIN` (any motel) or `PROPERTY_OWNER` (own motels only) |
+| `POST /api/rooms/**` | POST | Any authenticated user |
+| `PUT /api/rooms/**` | PUT | Any authenticated user |
+| `DELETE /api/rooms/**` | DELETE | Any authenticated user |
+| `POST /api/services/**` | POST | Any authenticated user |
+| `/api/reservations/**` | Any | Any authenticated user |
+| `/api/payments/**` | Any | Any authenticated user |
+| `POST /api/payments/webhook` | POST | Public (MercadoPago calls without JWT) |
+| `/api/user/**` | Any | Any authenticated user |
+
+<Info>
+  Property owners can only mutate their **own** motels. `MotelController` enforces this by resolving the authenticated user's database ID and comparing it against the motel's `propertyId` field.
+</Info>
+
+## Ownership enforcement
+
+For `PUT` and `DELETE` on `/api/motels/{id}`, the service applies an ownership check before the ADMIN short-circuit:
+
+```java
+// Property owner: verify the motel belongs to them
+return userRepository.findIdByUsername(username)
+    .flatMap(userId ->
+        motelUseCasePort.getMotelById(id)
+            .flatMap(existingMotel -> {
+                if (!userId.equals(existingMotel.propertyId())) {
+                    return Mono.error(new ResponseStatusException(
+                            HttpStatus.FORBIDDEN,
+                            "No tienes permiso para modificar este motel"));
+                }
+                return motelUseCasePort.updateMotel(id, motel);
+            })
+    );
+```

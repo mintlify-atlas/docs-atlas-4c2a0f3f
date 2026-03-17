@@ -1,0 +1,150 @@
+---
+title: "Docker Compose deployment"
+description: "Run the full Ubik Backend microservices stack locally or on a single host using Docker Compose."
+---
+
+## Prerequisites
+
+- Docker Engine 20.10 or later
+- Docker Compose v2 (`docker compose`, not `docker-compose`)
+- Access to an Azure Database for PostgreSQL Flexible Server instance (or a local PostgreSQL 14+ server)
+- A populated `.env` file (see [Environment variables](/deployment/environment-variables))
+
+<Note>
+  The stack does **not** include a PostgreSQL container. The database must be provisioned externally and its connection details provided via environment variables.
+</Note>
+
+## Quick start
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/your-org/ubik-front.git
+    cd ubik-front/microservicios/microreactivo
+    ```
+  </Step>
+  <Step title="Create the .env file">
+    Copy the example and fill in your values:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    At minimum you must set:
+
+    ```bash
+    SPRING_R2DBC_URL=r2dbc:postgresql://your-db-host:5432/postgres
+    SPRING_R2DBC_USERNAME=ubik
+    SPRING_R2DBC_PASSWORD=your-db-password
+    JWT_SECRET=a-long-random-string-at-least-256-bits
+    ROLE_ID_ADMIN=7392841056473829
+    ROLE_ID_PROPERTY_OWNER=3847261094857362
+    ROLE_ID_USER=9182736450192837
+    ```
+
+    See [Environment variables](/deployment/environment-variables) for the full list.
+  </Step>
+  <Step title="Build and start">
+    ```bash
+    docker compose up --build
+    ```
+
+    Add `-d` to run in detached mode:
+
+    ```bash
+    docker compose up --build -d
+    ```
+  </Step>
+  <Step title="Verify the gateway is healthy">
+    ```bash
+    curl http://localhost:8080/actuator/health
+    ```
+
+    Expected response:
+
+    ```json
+    {"status": "UP"}
+    ```
+  </Step>
+</Steps>
+
+## Service startup order
+
+The `depends_on` directives with `condition: service_healthy` ensure services come up in the correct order:
+
+```
+usermanagement-service  ─┐
+motel-management-service ─┼─→  gateway
+notification-service    ─┘
+
+motel-management-service ─┐
+notification-service     ─┴─→  payment-service
+```
+
+Each service exposes a Spring Boot Actuator health endpoint. Compose polls it every 30 seconds and waits up to 5 retries (with a 60–90 second start period for JVM warm-up) before marking a dependency as healthy.
+
+## Port mapping
+
+| Service | Container port | Host port | Health check URL |
+|---|---|---|---|
+| `gateway` | 8080 | 8080 | `http://localhost:8080/actuator/health` |
+| `usermanagement-service` | 8081 | 8081 | `http://localhost:8081/actuator/health` |
+| `motel-management-service` | 8083 | 8083 | `http://localhost:8083/actuator/health` |
+| `notification-service` | 8084 | 8084 | `http://localhost:8084/actuator/health` |
+| `payment-service` | 8085 | 8085 | `http://localhost:8085/actuator/health` |
+
+## Common commands
+
+### View logs
+
+```bash
+# All services
+docker compose logs -f
+
+# Single service
+docker compose logs -f gateway
+```
+
+### Restart a service
+
+```bash
+docker compose restart motel-management-service
+```
+
+### Stop everything
+
+```bash
+docker compose down
+```
+
+### Stop and remove volumes
+
+```bash
+docker compose down -v
+```
+
+### Rebuild a single service
+
+```bash
+docker compose up --build gateway -d
+```
+
+### Check container resource usage
+
+```bash
+docker stats
+```
+
+## Memory limits
+
+Each container is started with:
+
+```yaml
+JAVA_OPTS: "-Xmx512m -Xms256m"
+```
+
+Adjust these values if the host has limited RAM. All five services together require at minimum ~1.5 GB of JVM heap.
+
+<Warning>
+  If `payment-service` or `gateway` fail to start, it is almost always because a dependency service failed its health check. Check `docker compose logs usermanagement-service` first before investigating the gateway.
+</Warning>

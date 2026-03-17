@@ -1,0 +1,49 @@
+---
+title: "DELETE /api/motels/{id}"
+description: "Delete a motel. Admins can delete any motel; property owners can only delete their own."
+---
+
+## Overview
+
+Permanently deletes a motel record. Authorization rules mirror those of the update endpoint:
+
+- **ADMIN** — can delete any motel.
+- **PROPERTY_OWNER** — can only delete motels where `propertyId` matches their own user ID.
+
+<Warning>
+  Deletion is permanent and cannot be undone.
+</Warning>
+
+## Request
+
+**Method:** DELETE  
+**Path:** `/api/motels/{id}`  
+**Auth required:** Yes (Bearer token)  
+**Required role:** PROPERTY_OWNER (own motels only) or ADMIN (any motel)
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  Numeric ID of the motel to delete.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X DELETE http://localhost:8080/api/motels/12 \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
+```
+
+## Response
+
+**Status:** 204 No Content
+
+No response body is returned on success.
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 401 | Missing or invalid JWT, or `X-User-Username` header is absent |
+| 403 | PROPERTY_OWNER attempting to delete a motel they do not own, or user lacks required role |
+| 404 | Motel not found, or the authenticated username was not found in the user database |

@@ -1,0 +1,151 @@
+---
+title: "User Management Service"
+description: "Handles user registration, authentication, JWT issuance, password reset, and user profile management."
+---
+
+## Overview
+
+The User Management Service runs on port **8081** (`usermanagement-service` container). It is the only service that issues JWTs and the authoritative store for user identities.
+
+The service is built with hexagonal (ports and adapters) architecture:
+
+- **`UserUseCase`** — application port for registration, login, and password reset.
+- **`UserProfileUseCase`** — application port for profile reads, updates, and deletes.
+- **`UserService`** — domain service implementing both use case interfaces.
+- **`UserRepositoryPort`** — output port backed by R2DBC PostgreSQL.
+
+## Authentication endpoints
+
+Base path: `/api/auth`
+
+| Method | Path | Auth required | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | No | Create a new user account |
+| `POST` | `/api/auth/login` | No | Authenticate and receive a JWT |
+| `POST` | `/api/auth/reset-password-request` | No | Request a password reset email |
+| `POST` | `/api/auth/reset-password` | No | Complete a password reset with token |
+
+### Register
+
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "alice",
+    "email": "alice@example.com",
+    "password": "Secret1234!"
+  }'
+```
+
+Returns HTTP `201 Created` on success.
+
+### Login
+
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "alice", "password": "Secret1234!"}'
+```
+
+Returns the JWT as a plain string in the response body. The token contains the following claims:
+
+| Claim | Value |
+|---|---|
+| `sub` | Username |
+| `role` | The user's numeric role ID |
+| `userId` | The user's database primary key |
+| `exp` | Expiry timestamp (Unix epoch) |
+
+### Password reset
+
+Password reset is a two-step process:
+
+```bash
+# Step 1: Request a reset token (sent by email)
+curl -X POST "http://localhost:8080/api/auth/reset-password-request?email=alice@example.com"
+
+# Step 2: Submit the token and new password
+curl -X POST http://localhost:8080/api/auth/reset-password \
+  -H "Content-Type: application/json" \
+  -d '{"token": "<reset-token-from-email>", "newPassword": "NewSecret5678!"}'
+```
+
+## User profile endpoints
+
+Base path: `/api/user` — all endpoints require authentication. The service reads the `X-User-Username` header injected by the gateway to identify the caller.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/user` | Get the authenticated user's profile |
+| `GET` | `/api/user/{id}` | Get a user profile by database ID |
+| `PUT` | `/api/user` | Update the authenticated user's profile |
+| `DELETE` | `/api/user` | Delete the authenticated user's account |
+
+### Get profile
+
+```bash
+curl http://localhost:8080/api/user \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Update profile
+
+```bash
+curl -X PUT http://localhost:8080/api/user \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"email": "new@example.com"}'
+```
+
+### Delete account
+
+```bash
+curl -X DELETE http://localhost:8080/api/user \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns `204 No Content` on success, `404 Not Found` if the user does not exist.
+
+## How identity is propagated
+
+The profile controller never validates a JWT. Instead it reads the `X-User-Username` header that the gateway injects after validating the token:
+
+```java
+@GetMapping
+public Mono<ResponseEntity<UserProfileResponse>> getProfile(ServerWebExchange exchange) {
+    String username = exchange.getRequest().getHeaders().getFirst("X-User-Username");
+    return userProfileUseCase.getUserProfile(username)
+            .map(ResponseEntity::ok)
+            .defaultIfEmpty(ResponseEntity.notFound().build());
+}
+```
+
+<Info>
+This pattern applies to all protected operations in this service. The gateway is the authentication boundary; the service only needs to trust the headers it receives.
+</Info>
+
+## Password hashing
+
+Passwords are hashed with BCrypt at strength 12 (`spring.security.bcrypt.strength: 12`). This is configured in `application.yml` and applied by the `UserService` before persistence.
+
+## Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `SPRING_R2DBC_URL` | Yes | R2DBC connection URL, e.g. `r2dbc:postgresql://host:5432/db` |
+| `SPRING_R2DBC_USERNAME` | Yes | Database username |
+| `SPRING_R2DBC_PASSWORD` | Yes | Database password |
+| `JWT_SECRET` | Yes | HMAC-SHA256 signing key. Must match the gateway's `JWT_SECRET`. |
+| `JWT_EXPIRATION` | No | Token TTL in milliseconds. Default: `86400000` (24 hours). |
+
+<Warning>
+`JWT_SECRET` must be identical in both the User Management Service and the API Gateway. A mismatch causes all tokens to fail validation at the gateway, resulting in 401 errors for every authenticated request.
+</Warning>
+
+## Actuator
+
+```bash
+curl http://localhost:8081/actuator/health
+```
+
+The health endpoint reports R2DBC connectivity status (`spring.r2dbc` health indicator is enabled).

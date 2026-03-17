@@ -1,0 +1,126 @@
+---
+title: "PUT /api/reservations/{id}"
+description: "Update the dates, price, or special requests of an existing reservation"
+---
+
+## Overview
+
+Updates an existing reservation's scheduling details. Only the check-in date, check-out date, total price, and special requests can be modified. The `confirmationCode`, `userId`, `roomId`, and lifecycle `status` are immutable through this endpoint — use the [reservation actions endpoints](/api-reference/reservations/reservation-actions) to change status.
+
+## Request
+
+**Method:** PUT  
+**Path:** `/api/reservations/{id}`  
+**Auth required:** Yes  
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The unique ID of the reservation to update.
+</ParamField>
+
+### Request body
+
+<ParamField body="checkInDate" type="string (ISO 8601 datetime)" required>
+  The new check-in date and time. Must be a future datetime. Example: `2026-03-22T15:00:00`.
+</ParamField>
+
+<ParamField body="checkOutDate" type="string (ISO 8601 datetime)" required>
+  The new check-out date and time. Must be a future datetime. Example: `2026-03-23T11:00:00`.
+</ParamField>
+
+<ParamField body="totalPrice" type="double" required>
+  The updated total price. Must be a positive number.
+</ParamField>
+
+<ParamField body="specialRequests" type="string">
+  Updated special requests or notes. Maximum 500 characters. Pass `null` or omit to clear.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X PUT http://localhost:8080/api/reservations/47 \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "checkInDate": "2026-03-22T15:00:00",
+    "checkOutDate": "2026-03-23T11:00:00",
+    "totalPrice": 280000,
+    "specialRequests": "Ground floor room preferred"
+  }'
+```
+
+## Response
+
+**Status:** 200 OK
+
+<ResponseField name="id" type="long">
+  Unique reservation ID.
+</ResponseField>
+
+<ResponseField name="roomId" type="long">
+  ID of the reserved room (unchanged).
+</ResponseField>
+
+<ResponseField name="userId" type="long">
+  ID of the user who owns the reservation (unchanged).
+</ResponseField>
+
+<ResponseField name="checkInDate" type="string (ISO 8601 datetime)">
+  Updated check-in date and time.
+</ResponseField>
+
+<ResponseField name="checkOutDate" type="string (ISO 8601 datetime)">
+  Updated check-out date and time.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current reservation status (unchanged by this endpoint).
+</ResponseField>
+
+<ResponseField name="totalPrice" type="double">
+  Updated total price.
+</ResponseField>
+
+<ResponseField name="specialRequests" type="string">
+  Updated special requests.
+</ResponseField>
+
+<ResponseField name="confirmationCode" type="string">
+  The original confirmation code (immutable).
+</ResponseField>
+
+<ResponseField name="createdAt" type="string (ISO 8601 datetime)">
+  Original creation timestamp (unchanged).
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string (ISO 8601 datetime)">
+  Timestamp of this update.
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "id": 47,
+  "roomId": 12,
+  "userId": 3,
+  "checkInDate": "2026-03-22T15:00:00",
+  "checkOutDate": "2026-03-23T11:00:00",
+  "status": "PENDING",
+  "totalPrice": 280000.0,
+  "specialRequests": "Ground floor room preferred",
+  "confirmationCode": "UBIK-20260317-0042",
+  "createdAt": "2026-03-17T10:30:00",
+  "updatedAt": "2026-03-17T14:00:00"
+}
+```
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Validation failed — non-future dates, non-positive price, or `specialRequests` over 500 characters |
+| 401 | Missing or invalid authentication token |
+| 404 | Reservation not found for the given ID |

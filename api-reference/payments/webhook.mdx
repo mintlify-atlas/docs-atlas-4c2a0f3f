@@ -1,0 +1,106 @@
+---
+title: "POST /api/payments/webhook"
+description: "MercadoPago webhook for payment status notifications"
+---
+
+## Overview
+
+This endpoint is called by MercadoPago's notification system when the status of a payment changes — for example, when a user completes checkout (approved or rejected). The service fetches the full payment details from the MercadoPago API, updates the internal payment record, and automatically updates the associated reservation.
+
+<Note>
+  This endpoint is **public** — it does not require an `Authorization` header. Authentication is instead based on the MercadoPago notification signature (see the note on signature verification below). It must be accessible from the public internet so MercadoPago can reach it.
+</Note>
+
+## Request
+
+**Method:** POST  
+**Path:** `/api/payments/webhook`  
+**Auth required:** No (called by MercadoPago)  
+
+### Request body
+
+MercadoPago sends a JSON payload describing the event. The service uses the `type` and `data.id` fields.
+
+<ParamField body="action" type="string">
+  The action that triggered the notification. Common values: `"payment.created"`, `"payment.updated"`.
+</ParamField>
+
+<ParamField body="type" type="string">
+  The resource type. The service only processes events where `type` is `"payment"`. Other types are acknowledged and silently ignored.
+</ParamField>
+
+<ParamField body="data" type="object">
+  An object containing the MercadoPago resource ID.
+</ParamField>
+
+<ParamField body="data.id" type="string">
+  The MercadoPago payment ID. The service uses this to fetch the full payment details from MercadoPago and determine the outcome.
+</ParamField>
+
+### Example webhook payload
+
+```json
+{
+  "action": "payment.updated",
+  "type": "payment",
+  "data": {
+    "id": "7891234560"
+  }
+}
+```
+
+### Example request (for testing)
+
+```bash
+curl -X POST http://localhost:8080/api/payments/webhook \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "payment.updated",
+    "type": "payment",
+    "data": {
+      "id": "7891234560"
+    }
+  }'
+```
+
+## Response
+
+**Status:** 200 OK — no response body.
+
+MercadoPago expects a `200 OK` response. If the service fails to respond with `200`, MercadoPago will retry the notification.
+
+## Processing logic
+
+When a webhook is received, the service:
+
+1. Validates that `type` is `"payment"` and `data` is not null. Other event types return `200 OK` immediately without further processing.
+2. Fetches the full payment record from the MercadoPago API using `data.id`.
+3. Maps the MercadoPago status to the internal `PaymentStatus`:
+
+| MercadoPago status | Internal status |
+|--------------------|----------------|
+| `approved` | `APPROVED` |
+| `rejected` | `REJECTED` |
+| `refunded` | `REFUNDED` |
+| `cancelled` | `CANCELLED` |
+| anything else | `PENDING` |
+
+4. Locates the internal payment record by MercadoPago preference ID or by `reservationId` (derived from the payment's `externalReference`).
+5. Updates the internal payment record with the new status and the `mercadoPagoPaymentId`.
+6. Executes post-payment actions based on the new status:
+   - **`APPROVED`** — automatically calls `PATCH /api/reservations/{id}/confirm` on the Motel Management service, and sends a payment-approved notification email.
+   - **`REJECTED`** — automatically calls `PATCH /api/reservations/{id}/cancel` on the Motel Management service, and sends a payment-rejected notification email.
+
+## Signature verification
+
+<Warning>
+  In production, MercadoPago signs webhook requests with an `x-signature` header and a secret key. Verifying this signature prevents spoofed webhook calls. Review the MercadoPago webhook security documentation and implement signature verification before deploying to production.
+</Warning>
+
+## Error responses
+
+The webhook endpoint always returns `200 OK` to MercadoPago, even for unrecognized event types, to prevent unnecessary retries. Internal processing errors are logged but do not change the HTTP response status.
+
+| Status | Description |
+|--------|-------------|
+| 200 | Request acknowledged (regardless of internal processing outcome) |

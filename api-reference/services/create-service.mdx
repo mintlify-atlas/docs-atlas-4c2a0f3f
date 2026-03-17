@@ -1,0 +1,222 @@
+---
+title: "POST /api/services"
+description: "Create, update, and delete services. All write operations require authentication."
+---
+
+## Overview
+
+Three protected endpoints for managing services:
+
+- `POST /api/services` — create a new service.
+- `PUT /api/services/{id}` — replace all fields of an existing service.
+- `DELETE /api/services/{id}` — permanently delete a service.
+
+All three require authentication via `X-User-Username` and `X-User-Role` headers forwarded by the API gateway.
+
+---
+
+## POST /api/services
+
+Creates a new service.
+
+**Method:** `POST`  
+**Path:** `/api/services`  
+**Auth required:** Yes  
+**Required role:** Authenticated
+
+### Required headers
+
+<ParamField header="X-User-Username" type="string" required>
+  The username of the authenticated user, forwarded by the API gateway.
+</ParamField>
+
+<ParamField header="X-User-Role" type="string" required>
+  The role ID of the authenticated user, forwarded by the API gateway.
+</ParamField>
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token issued by the authentication service.
+</ParamField>
+
+### Request body
+
+<ParamField body="name" type="string" required>
+  Name of the service. Must not be blank. Maximum 50 characters.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional description of the service. Maximum 255 characters.
+</ParamField>
+
+<ParamField body="icon" type="string">
+  Optional icon identifier for UI display. Maximum 50 characters.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X POST http://localhost:8080/api/services \
+  -H "Authorization: Bearer <token>" \
+  -H "X-User-Username: admin_user" \
+  -H "X-User-Role: <role-id>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Desayuno incluido",
+    "description": "Desayuno continental servido en la habitación.",
+    "icon": "coffee"
+  }'
+```
+
+### Response — `201 Created`
+
+<ResponseField name="id" type="long">
+  The system-assigned ID of the newly created service.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Name as provided in the request.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Description as provided. `null` if not supplied.
+</ResponseField>
+
+<ResponseField name="icon" type="string">
+  Icon identifier as provided. `null` if not supplied.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string (ISO-8601 datetime)">
+  Timestamp of when the service was created.
+</ResponseField>
+
+```json
+{
+  "id": 8,
+  "name": "Desayuno incluido",
+  "description": "Desayuno continental servido en la habitación.",
+  "icon": "coffee",
+  "createdAt": "2026-03-17T14:00:00"
+}
+```
+
+---
+
+## PUT /api/services/{id}
+
+Fully replaces all mutable fields of an existing service.
+
+**Method:** `PUT`  
+**Path:** `/api/services/{id}`  
+**Auth required:** Yes  
+**Required role:** Authenticated
+
+### Required headers
+
+<ParamField header="X-User-Username" type="string" required>
+  The username of the authenticated user, forwarded by the API gateway.
+</ParamField>
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token issued by the authentication service.
+</ParamField>
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The unique identifier of the service to update.
+</ParamField>
+
+### Request body
+
+<ParamField body="name" type="string" required>
+  Updated name of the service. Must not be blank. Maximum 50 characters.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Updated description. Maximum 255 characters. Pass `null` to clear.
+</ParamField>
+
+<ParamField body="icon" type="string">
+  Updated icon identifier. Maximum 50 characters. Pass `null` to clear.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X PUT http://localhost:8080/api/services/8 \
+  -H "Authorization: Bearer <token>" \
+  -H "X-User-Username: admin_user" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Desayuno incluido",
+    "description": "Desayuno buffet servido en el comedor principal.",
+    "icon": "utensils"
+  }'
+```
+
+### Response — `200 OK`
+
+Returns the updated `ServiceResponse` object:
+
+```json
+{
+  "id": 8,
+  "name": "Desayuno incluido",
+  "description": "Desayuno buffet servido en el comedor principal.",
+  "icon": "utensils",
+  "createdAt": "2026-03-17T14:00:00"
+}
+```
+
+---
+
+## DELETE /api/services/{id}
+
+Permanently deletes a service. Any room-service associations for this service are also removed.
+
+**Method:** `DELETE`  
+**Path:** `/api/services/{id}`  
+**Auth required:** Yes  
+**Required role:** Authenticated
+
+<Warning>
+  Deleting a service is permanent. Rooms that currently reference this service will lose the association.
+</Warning>
+
+### Required headers
+
+<ParamField header="X-User-Username" type="string" required>
+  The username of the authenticated user, forwarded by the API gateway.
+</ParamField>
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token issued by the authentication service.
+</ParamField>
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The unique identifier of the service to delete.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X DELETE http://localhost:8080/api/services/8 \
+  -H "Authorization: Bearer <token>" \
+  -H "X-User-Username: admin_user"
+```
+
+### Response — `204 No Content`
+
+The response body is empty on success.
+
+---
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Validation error — `name` is blank or exceeds 50 characters; `description` exceeds 255 characters; `icon` exceeds 50 characters |
+| 401 | Missing `X-User-Username` (or `X-User-Role` for POST) header |
+| 404 | No service found with the given `id` (for PUT and DELETE) |

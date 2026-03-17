@@ -1,0 +1,58 @@
+---
+title: "POST /api/auth/login"
+description: "Authenticate with username and password and receive a JWT token."
+---
+
+## Overview
+
+Validates the provided credentials and returns a signed JWT token on success. The token encodes the user's `username` and `roleId` and must be included in the `Authorization` header of all protected requests.
+
+## Request
+
+**Method:** POST  
+**Path:** `/api/auth/login`  
+**Auth required:** No
+
+### Request body
+
+<ParamField body="username" type="string" required>
+  The account username.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The account password.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "johndoe",
+    "password": "securePass1"
+  }'
+```
+
+## Response
+
+**Status:** 200 OK
+
+Returns a JWT token as a plain string.
+
+### Example response
+
+```json
+"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJqb2huZG9lIiwicm9sZSI6IjIiLCJpYXQiOjE3MDAwMDAwMDB9.abc123"
+```
+
+<Note>
+  Use the returned token as a Bearer token in the `Authorization` header:
+  `Authorization: Bearer <token>`
+</Note>
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Invalid credentials or validation error — `username` or `password` is blank |

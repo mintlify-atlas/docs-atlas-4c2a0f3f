@@ -1,0 +1,180 @@
+---
+title: "GET /api/admin/motels/statistics"
+description: "Retrieve aggregate approval statistics for all motels in the system, with additional endpoints for filtering and status transitions."
+---
+
+## Overview
+
+Returns a single object containing counts of motels grouped by their approval status, plus a count of motels that are missing required legal information. This page also documents the related admin listing and status-transition endpoints.
+
+<Note>
+  All endpoints on this page require the `ADMIN` role.
+</Note>
+
+---
+
+## GET /api/admin/motels/statistics
+
+Returns aggregate approval statistics across all motels.
+
+**Method:** `GET`  
+**Path:** `/api/admin/motels/statistics`  
+**Auth required:** Yes  
+**Required role:** `ADMIN`
+
+### Required headers
+
+<ParamField header="X-User-Role" type="string" required>
+  Must match the configured admin role ID.
+</ParamField>
+
+<ParamField header="X-User-Username" type="string" required>
+  The username of the authenticated admin.
+</ParamField>
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token issued by the authentication service.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X GET http://localhost:8080/api/admin/motels/statistics \
+  -H "Authorization: Bearer <token>" \
+  -H "X-User-Role: <admin-role-id>" \
+  -H "X-User-Username: admin_user" \
+  -H "X-User-Id: 1"
+```
+
+### Response — `200 OK`
+
+<ResponseField name="totalMotels" type="long">
+  Total number of motels registered in the system.
+</ResponseField>
+
+<ResponseField name="pendingApproval" type="long">
+  Number of motels with status `PENDING`.
+</ResponseField>
+
+<ResponseField name="underReview" type="long">
+  Number of motels with status `UNDER_REVIEW`.
+</ResponseField>
+
+<ResponseField name="approved" type="long">
+  Number of motels with status `APPROVED`.
+</ResponseField>
+
+<ResponseField name="rejected" type="long">
+  Number of motels with status `REJECTED`.
+</ResponseField>
+
+<ResponseField name="withIncompleteLegalInfo" type="long">
+  Number of motels that do not have complete legal information on file. These motels cannot be approved until the missing data is provided.
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "totalMotels": 120,
+  "pendingApproval": 14,
+  "underReview": 6,
+  "approved": 95,
+  "rejected": 5,
+  "withIncompleteLegalInfo": 9
+}
+```
+
+---
+
+## GET /api/admin/motels
+
+Returns all motels, optionally filtered by approval status.
+
+**Method:** `GET`  
+**Path:** `/api/admin/motels`  
+**Auth required:** Yes  
+**Required role:** `ADMIN`
+
+### Query parameters
+
+<ParamField query="status" type="string">
+  Filter results by approval status. Accepted values: `PENDING`, `UNDER_REVIEW`, `APPROVED`, `REJECTED`. Case-insensitive. Omit to return all motels.
+</ParamField>
+
+### Example requests
+
+```bash
+# All motels
+curl -X GET http://localhost:8080/api/admin/motels \
+  -H "Authorization: Bearer <token>" \
+  -H "X-User-Role: <admin-role-id>" \
+  -H "X-User-Username: admin_user" \
+  -H "X-User-Id: 1"
+
+# Only approved motels
+curl -X GET "http://localhost:8080/api/admin/motels?status=APPROVED" \
+  -H "Authorization: Bearer <token>" \
+  -H "X-User-Role: <admin-role-id>" \
+  -H "X-User-Username: admin_user" \
+  -H "X-User-Id: 1"
+```
+
+### Response — `200 OK`
+
+Returns a JSON array of `MotelResponse` objects (same shape as the pending-motels endpoint). Returns an empty array when no motels match the filter.
+
+---
+
+## PATCH /api/admin/motels/{id}/review
+
+Transitions a motel's approval status to `UNDER_REVIEW`. Use this to signal that an admin has started actively examining a motel's registration before making a final approve/reject decision.
+
+**Method:** `PATCH`  
+**Path:** `/api/admin/motels/{id}/review`  
+**Auth required:** Yes  
+**Required role:** `ADMIN`
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The unique identifier of the motel to place under review.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X PATCH http://localhost:8080/api/admin/motels/42/review \
+  -H "Authorization: Bearer <token>" \
+  -H "X-User-Role: <admin-role-id>" \
+  -H "X-User-Username: admin_user" \
+  -H "X-User-Id: 1"
+```
+
+### Response — `200 OK`
+
+Returns an `ApprovalOperationResponse` object:
+
+```json
+{
+  "motelId": 42,
+  "motelName": "Hotel Vista Mar",
+  "previousStatus": "PENDING",
+  "newStatus": "UNDER_REVIEW",
+  "message": "Motel puesto en revisión",
+  "operationDate": "2026-03-17T12:00:00",
+  "performedByUserId": 1
+}
+```
+
+---
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Invalid `status` query parameter value; or `X-User-Id` is not a valid number |
+| 401 | Missing `X-User-Role` or `X-User-Username` header |
+| 403 | Authenticated user does not have the admin role |
+| 404 | No motel found with the given `id` (for `/review` endpoint) |
+| 409 | The motel is already in `UNDER_REVIEW` status (for `/review` endpoint) |

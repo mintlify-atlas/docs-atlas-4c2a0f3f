@@ -1,0 +1,143 @@
+---
+title: "Payment Service"
+description: "Processes payments and refunds via MercadoPago Marketplace, handles OAuth motel account linking, and reacts to payment webhooks."
+---
+
+## Overview
+
+The Payment Service runs on port **8085** (`payment-service` container). It integrates with the MercadoPago Marketplace API to support split payments: a guest pays for a reservation and the platform takes a configurable fee (`MP_FEE_PERCENT`, default 10%), forwarding the remainder to the motel's linked MercadoPago account.
+
+The service communicates with two downstream services:
+- **Motel Management** (`http://motel-management-service:8083`) — to fetch motel details when building payment preferences.
+- **Notification Service** (`http://notification-service:8084`) — to send payment confirmation emails.
+
+## Payment endpoints
+
+Base path: `/api/payments`
+
+| Method | Path | Auth required | Description |
+|---|---|---|---|
+| `POST` | `/api/payments` | Yes | Create a MercadoPago payment preference |
+| `GET` | `/api/payments/{id}` | Yes | Get a payment by internal ID |
+| `GET` | `/api/payments/reservation/{reservationId}` | Yes | List payments for a reservation |
+| `GET` | `/api/payments/user/{userId}` | Yes | List payments for a user |
+| `POST` | `/api/payments/{id}/refund` | Yes | Refund an approved payment |
+| `POST` | `/api/payments/webhook` | **No** | Receive MercadoPago webhook callbacks |
+
+### Create payment preference
+
+Creates a preference in MercadoPago and returns an `init_point` URL that the client redirects the user to:
+
+```bash
+curl -X POST http://localhost:8080/api/payments \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "reservationId": 42,
+    "amount": 150000,
+    "description": "Room 3 - Hotel Ubik - 2 nights",
+    "motelId": 7
+  }'
+```
+
+The service reads `X-User-Id` from the gateway-injected header to associate the payment with the authenticated user:
+
+```java
+String userIdHeader = exchange.getRequest().getHeaders().getFirst("X-User-Id");
+Long userId = Long.parseLong(userIdHeader);
+return paymentService.createPayment(request, userId);
+```
+
+### Get payment by ID
+
+```bash
+curl http://localhost:8080/api/payments/15 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Refund a payment
+
+```bash
+curl -X POST http://localhost:8080/api/payments/15/refund \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+The service reads `X-User-Id` and `X-User-Role` from the request to authorize the refund.
+
+<Note>
+Refund authorization logic is in `PaymentController`. The role check is prepared but currently delegates to `paymentService.refundPayment(id)` regardless of role. Ensure you add business-level authorization if only admins should be allowed to refund.
+</Note>
+
+## Webhook endpoint
+
+MercadoPago calls `POST /api/payments/webhook` asynchronously after a payment is approved, rejected, or cancelled. This endpoint is explicitly public in the gateway security configuration.
+
+```bash
+# Example payload from MercadoPago
+{
+  "action": "payment.updated",
+  "type": "payment",
+  "data": { "id": "1234567890" }
+}
+```
+
+The controller filters events by `type == "payment"` and delegates to `paymentService.processWebhook(data.id)`, which fetches the payment status from MercadoPago and updates the internal record.
+
+<Info>
+To validate webhook authenticity in production, implement HMAC signature verification using `MERCADOPAGO_WEBHOOK_SECRET`. The secret is available as an environment variable but signature verification must be added to the webhook handler.
+</Info>
+
+## MercadoPago OAuth
+
+For split payments (marketplace model), each motel must authorize the platform to charge on its behalf. The OAuth flow handles this:
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/payments/oauth/connect/{motelId}` | Redirect motel owner to MercadoPago authorization page |
+| `GET` | `/api/payments/oauth/callback` | Handle MercadoPago redirect and store access token |
+| `DELETE` | `/api/payments/oauth/{motelId}` | Unlink a motel's MercadoPago account |
+
+### OAuth flow
+
+```
+Motel owner's browser
+  │
+  ├─ GET /api/payments/oauth/connect/{motelId}
+  │      → 302 redirect to MercadoPago authorization URL
+  │
+  └─ MercadoPago → GET /api/payments/oauth/callback?code=XXX&state={motelId}
+         → exchange code for access token
+         → store token linked to motelId
+         → return confirmation message
+```
+
+After the flow completes, the motel's MercadoPago account is stored and used automatically when creating payment preferences for that motel's reservations.
+
+```bash
+# Initiate OAuth for motel ID 7 (browser redirect)
+open http://localhost:8080/api/payments/oauth/connect/7
+
+# Unlink motel 7's MercadoPago account
+curl -X DELETE http://localhost:8080/api/payments/oauth/7 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `SPRING_R2DBC_URL` | Yes | R2DBC PostgreSQL connection URL |
+| `SPRING_R2DBC_USERNAME` | Yes | Database username |
+| `SPRING_R2DBC_PASSWORD` | Yes | Database password |
+| `MERCADOPAGO_ACCESS_TOKEN` | Yes | Platform marketplace access token |
+| `MERCADOPAGO_CLIENT_ID` | Yes | MercadoPago application client ID |
+| `MERCADOPAGO_CLIENT_SECRET` | Yes | MercadoPago application client secret |
+| `MERCADOPAGO_REDIRECT_URI` | Yes | OAuth callback URL (e.g. `https://ubik.app/api/payments/oauth/callback`) |
+| `MERCADOPAGO_WEBHOOK_SECRET` | Yes | Secret for validating webhook signatures |
+| `MP_FEE_PERCENT` | No | Marketplace fee percentage. Default: `10` |
+
+## Actuator
+
+```bash
+curl http://localhost:8085/actuator/health
+```

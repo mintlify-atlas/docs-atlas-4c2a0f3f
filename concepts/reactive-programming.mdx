@@ -1,0 +1,174 @@
+---
+title: "Reactive programming"
+description: "How Ubik Backend uses Project Reactor (Mono and Flux) with Spring WebFlux and R2DBC to handle high-concurrency booking traffic without blocking threads."
+---
+
+Ubik Backend is fully reactive from the HTTP layer down to the database. Instead of blocking a thread per request, every operation returns a reactive stream — allowing a small, fixed thread pool to handle thousands of concurrent connections.
+
+## Why reactive for a booking platform
+
+A typical booking request touches several services in sequence: authenticate → look up motel availability → create reservation → charge payment → send confirmation email. In a traditional blocking model, each step occupies a thread for the full duration of I/O waits. Under peak load (check-in weekends, promotional events), this exhausts the thread pool and queues requests.
+
+With Project Reactor, threads are released back to the pool whenever an I/O operation is in flight. The same thread pool that handles HTTP can serve hundreds of concurrent booking flows.
+
+## Mono vs. Flux
+
+| Type | Semantics | Typical use |
+|---|---|---|
+| `Mono<T>` | 0 or 1 item, then completes or errors | Find by ID, create, update, delete |
+| `Flux<T>` | 0 to N items, then completes or errors | List all, search by city/owner |
+
+### Examples from MotelUseCasePort
+
+```java
+// Returns every motel — unbounded stream
+Flux<Motel> getAllMotels();
+
+// Returns one motel or signals an error if missing
+Mono<Motel> getMotelById(Long id);
+
+// Deletion emits nothing on success
+Mono<Void> deleteMotel(Long id);
+```
+
+And in `MotelController`, those are wired directly to HTTP response serialization:
+
+```java
+@GetMapping
+public Flux<MotelResponse> getAllMotels() {
+    return motelUseCasePort.getAllMotels()
+            .map(motelDtoMapper::toResponse);
+}
+
+@GetMapping("/{id}")
+public Mono<MotelResponse> getMotelById(@PathVariable Long id) {
+    return motelUseCasePort.getMotelById(id)
+            .map(motelDtoMapper::toResponse);
+}
+```
+
+Spring WebFlux subscribes to these publishers and streams items to the HTTP response as they arrive, without buffering the full result set in memory.
+
+## R2DBC: reactive database access
+
+Ubik uses **R2DBC** (Reactive Relational Database Connectivity) with the `r2dbc-postgresql` driver. This replaces JDBC's blocking socket reads with a non-blocking protocol, so database queries return `Mono` or `Flux` rather than blocking until results arrive.
+
+The connection pool is configured in `application-docker.yml`:
+
+```yaml
+spring:
+  r2dbc:
+    url: ${SPRING_R2DBC_URL}
+    username: ${SPRING_R2DBC_USERNAME}
+    password: ${SPRING_R2DBC_PASSWORD}
+    pool:
+      initial-size: 5
+      max-size: 15
+      max-idle-time: 30m
+      max-acquire-time: 3m
+```
+
+The URL format is `r2dbc:postgresql://host:5432/dbname` — note the `r2dbc:` prefix, not `jdbc:`.
+
+## Error handling patterns
+
+Reactive chains use operators rather than try/catch:
+
+### switchIfEmpty — handle empty stream
+
+```java
+// MotelService.java
+public Mono<Motel> getMotelById(Long id) {
+    return motelRepositoryPort.findById(id)
+            .switchIfEmpty(Mono.error(
+                new RuntimeException("Motel no encontrado con ID: " + id)));
+}
+```
+
+`switchIfEmpty` fires only when the upstream `Mono` completes without emitting an item — equivalent to a 404 case.
+
+### flatMap — chain dependent operations
+
+```java
+// MotelService.java
+public Mono<Void> deleteMotel(Long id) {
+    return motelRepositoryPort.existsById(id)
+            .flatMap(exists -> {
+                if (!exists) {
+                    return Mono.error(new RuntimeException(
+                        "Motel no encontrado con ID: " + id));
+                }
+                return motelRepositoryPort.deleteById(id);
+            });
+}
+```
+
+`flatMap` replaces nested callbacks: the inner lambda receives the upstream value and returns a new publisher that becomes the next step in the chain.
+
+### Mono.error — propagate errors
+
+```java
+return Mono.error(new ResponseStatusException(
+        HttpStatus.FORBIDDEN, "No tienes permiso para crear moteles"));
+```
+
+Spring WebFlux maps `ResponseStatusException` to the corresponding HTTP status code automatically.
+
+### onErrorResume — degrade gracefully
+
+```java
+// NotificationClient.java
+public Mono<Void> sendEmailAsync(String to, String subject, String message) {
+    return webClient.post()
+            .uri("/notifications/email")
+            .bodyValue(new EmailRequest(to, subject, message))
+            .retrieve()
+            .bodyToMono(Void.class)
+            .subscribeOn(Schedulers.boundedElastic())
+            .onErrorResume(error -> Mono.empty());  // email failure is non-fatal
+}
+```
+
+If the notification service is unavailable, the booking flow continues rather than rolling back.
+
+## WebClient for inter-service communication
+
+Services call each other using Spring's non-blocking `WebClient`. The `NotificationClient` in the motel management service shows the canonical pattern:
+
+```java
+// motelManagement/.../NotificationClient.java
+@Component
+public class NotificationClient {
+
+    private final WebClient webClient;
+
+    public NotificationClient(
+            @Value("${notification.service.url:http://notificationService:8084}") String baseUrl) {
+        this.webClient = WebClient.builder()
+                .baseUrl(baseUrl)
+                .build();
+    }
+
+    public Mono<Void> sendEmailAsync(String to, String subject, String message) {
+        return webClient.post()
+                .uri("/notifications/email")
+                .header("X-Internal-Request", "true")
+                .bodyValue(new EmailRequest(to, subject, message))
+                .retrieve()
+                .bodyToMono(Void.class)
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnSuccess(v -> log.info("Email sent to: {}", to))
+                .doOnError(e -> log.error("Email error: {}", e.getMessage()))
+                .onErrorResume(e -> Mono.empty());
+    }
+}
+```
+
+Key points:
+- `subscribeOn(Schedulers.boundedElastic())` offloads the HTTP call to a separate thread pool, keeping the main event loop free.
+- `onErrorResume` ensures a failed email notification does not cascade into a failed booking response.
+- Service-to-service calls use the Docker network hostname (`notificationService:8084`), not `localhost`.
+
+<Tip>
+  Use `doOnNext`, `doOnSuccess`, `doOnError`, and `doOnComplete` for side-effect logging without interrupting the reactive chain. These operators do not alter the stream — they observe it.
+</Tip>

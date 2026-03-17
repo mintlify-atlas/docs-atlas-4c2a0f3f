@@ -1,0 +1,113 @@
+---
+title: "POST /api/services/room/{roomId}/service/{serviceId}"
+description: "Add or remove a service association on a room. Both operations require authentication."
+---
+
+## Overview
+
+Two protected endpoints for managing the many-to-many relationship between rooms and services:
+
+- `POST /api/services/room/{roomId}/service/{serviceId}` — associate a service with a room.
+- `DELETE /api/services/room/{roomId}/service/{serviceId}` — remove a service association from a room.
+
+Both operations require the `X-User-Username` header forwarded by the API gateway.
+
+<Note>
+  These endpoints modify the association table only — neither the room nor the service record is altered.
+</Note>
+
+---
+
+## POST /api/services/room/{roomId}/service/{serviceId}
+
+Associates an existing service with an existing room.
+
+**Method:** `POST`  
+**Path:** `/api/services/room/{roomId}/service/{serviceId}`  
+**Auth required:** Yes  
+**Required role:** Authenticated (PROPERTY_OWNER or ADMIN)
+
+### Required headers
+
+<ParamField header="X-User-Username" type="string" required>
+  The username of the authenticated user, forwarded by the API gateway.
+</ParamField>
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token issued by the authentication service.
+</ParamField>
+
+### Path parameters
+
+<ParamField path="roomId" type="long" required>
+  The unique identifier of the room to which the service will be added.
+</ParamField>
+
+<ParamField path="serviceId" type="long" required>
+  The unique identifier of the service to associate with the room.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X POST http://localhost:8080/api/services/room/5/service/3 \
+  -H "Authorization: Bearer <token>" \
+  -H "X-User-Username: owner_user"
+```
+
+### Response — `201 Created`
+
+The response body is empty on success. The association between the room and the service is now active. Use `GET /api/services/room/{roomId}` to verify.
+
+---
+
+## DELETE /api/services/room/{roomId}/service/{serviceId}
+
+Removes the association between a service and a room. The service and room records themselves are not affected.
+
+**Method:** `DELETE`  
+**Path:** `/api/services/room/{roomId}/service/{serviceId}`  
+**Auth required:** Yes  
+**Required role:** Authenticated (PROPERTY_OWNER or ADMIN)
+
+### Required headers
+
+<ParamField header="X-User-Username" type="string" required>
+  The username of the authenticated user, forwarded by the API gateway.
+</ParamField>
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token issued by the authentication service.
+</ParamField>
+
+### Path parameters
+
+<ParamField path="roomId" type="long" required>
+  The unique identifier of the room from which the service will be removed.
+</ParamField>
+
+<ParamField path="serviceId" type="long" required>
+  The unique identifier of the service to disassociate.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X DELETE http://localhost:8080/api/services/room/5/service/3 \
+  -H "Authorization: Bearer <token>" \
+  -H "X-User-Username: owner_user"
+```
+
+### Response — `204 No Content`
+
+The response body is empty on success.
+
+---
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 401 | Missing `X-User-Username` header |
+| 404 | No room found with the given `roomId`, or no service found with the given `serviceId` |
+| 409 | The association already exists (for POST) or does not exist (for DELETE) |

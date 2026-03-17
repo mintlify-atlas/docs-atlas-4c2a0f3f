@@ -1,0 +1,135 @@
+---
+title: "PUT /api/rooms/{id}"
+description: "Replace all mutable fields of an existing room. Requires authentication."
+---
+
+## Overview
+
+Fully replaces the mutable properties of an existing room. All fields in the request body (except `serviceIds`) are required. This is a full replacement — omitting optional fields will clear their stored values.
+
+<Note>
+  Authentication is required. The request must include the `X-User-Username` header forwarded by the API gateway.
+</Note>
+
+## Request
+
+**Method:** `PUT`  
+**Path:** `/api/rooms/{id}`  
+**Auth required:** Yes  
+**Required role:** Authenticated (PROPERTY_OWNER or ADMIN)
+
+### Required headers
+
+<ParamField header="X-User-Username" type="string" required>
+  The username of the authenticated user, forwarded by the API gateway.
+</ParamField>
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token issued by the authentication service.
+</ParamField>
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The unique identifier of the room to update.
+</ParamField>
+
+### Request body
+
+<ParamField body="number" type="string" required>
+  Updated room number or identifier. Maximum 20 characters.
+</ParamField>
+
+<ParamField body="roomType" type="string" required>
+  Updated room type/category. Maximum 50 characters.
+</ParamField>
+
+<ParamField body="price" type="double" required>
+  Updated price. Must be greater than zero.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Updated description. Maximum 500 characters. Pass `null` to clear.
+</ParamField>
+
+<ParamField body="isAvailable" type="boolean" required>
+  Updated availability status. Must not be `null`.
+</ParamField>
+
+<ParamField body="imageUrls" type="array of string">
+  Updated list of image URLs. Maximum 15 entries; each URL at most 500 characters.
+</ParamField>
+
+<ParamField body="latitude" type="double">
+  Updated geographic latitude. Must be between `-90.0` and `90.0`.
+</ParamField>
+
+<ParamField body="longitude" type="double">
+  Updated geographic longitude. Must be between `-180.0` and `180.0`.
+</ParamField>
+
+<ParamField body="serviceIds" type="array of long">
+  Updated list of service IDs to associate with the room.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X PUT http://localhost:8080/api/rooms/99 \
+  -H "Authorization: Bearer <token>" \
+  -H "X-User-Username: owner_user" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "number": "201",
+    "roomType": "Suite Deluxe",
+    "price": 135000.0,
+    "description": "Suite de lujo renovada con jacuzzi y balcón.",
+    "isAvailable": false,
+    "imageUrls": [
+      "https://cdn.example.com/rooms/99/photo1.jpg",
+      "https://cdn.example.com/rooms/99/photo2.jpg"
+    ],
+    "latitude": 4.7109,
+    "longitude": -74.0721,
+    "serviceIds": [1, 2, 4, 5]
+  }'
+```
+
+## Response
+
+**Status:** `200 OK`
+
+Returns the updated `RoomResponse` object with all fields populated, including denormalized motel information.
+
+### Example response
+
+```json
+{
+  "id": 99,
+  "motelId": 10,
+  "number": "201",
+  "roomType": "Suite Deluxe",
+  "price": 135000.0,
+  "description": "Suite de lujo renovada con jacuzzi y balcón.",
+  "isAvailable": false,
+  "imageUrls": [
+    "https://cdn.example.com/rooms/99/photo1.jpg",
+    "https://cdn.example.com/rooms/99/photo2.jpg"
+  ],
+  "latitude": 4.7109,
+  "longitude": -74.0721,
+  "motelName": "Motel El Descanso",
+  "motelAddress": "Avenida 9 #10-20",
+  "motelCity": "Bogotá",
+  "motelPhoneNumber": "+57 300 000 0000",
+  "serviceIds": [1, 2, 4, 5]
+}
+```
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Validation error — required field missing or invalid (e.g., `isAvailable` is null, price is not positive, coordinate out of range) |
+| 401 | Missing `X-User-Username` header |
+| 404 | No room found with the given `id` |

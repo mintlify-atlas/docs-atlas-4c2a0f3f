@@ -1,0 +1,88 @@
+---
+title: "POST /api/auth/register"
+description: "Register a new user account and receive a JWT token."
+---
+
+## Overview
+
+Creates a new user account in the system. On success, returns a JWT token that can be used to authenticate subsequent requests. New accounts are assigned the role specified by `roleId`.
+
+## Request
+
+**Method:** POST  
+**Path:** `/api/auth/register`  
+**Auth required:** No
+
+### Request body
+
+<ParamField body="username" type="string" required>
+  Unique username for the account. Must be between 3 and 50 characters.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Account password. Must be at least 8 characters.
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  Valid email address for the account.
+</ParamField>
+
+<ParamField body="anonymous" type="boolean" required>
+  Whether the user profile should be treated as anonymous.
+</ParamField>
+
+<ParamField body="roleId" type="integer" required>
+  Numeric ID of the role to assign. Can be sent as a number or as a quoted string (e.g. `"2"`).
+</ParamField>
+
+<ParamField body="phoneNumber" type="string">
+  Contact phone number. Maximum 20 characters.
+</ParamField>
+
+<ParamField body="longitude" type="number">
+  Geographic longitude of the user's location. Must be between -180 and 180.
+</ParamField>
+
+<ParamField body="latitude" type="number">
+  Geographic latitude of the user's location. Must be between -90 and 90.
+</ParamField>
+
+<ParamField body="birthDate" type="string">
+  Date of birth in `YYYY-MM-DD` format. Must be a date in the past.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "johndoe",
+    "password": "securePass1",
+    "email": "john@example.com",
+    "phoneNumber": "+573001234567",
+    "anonymous": false,
+    "roleId": 2,
+    "longitude": -74.0817,
+    "latitude": 4.6097,
+    "birthDate": "1990-05-15"
+  }'
+```
+
+## Response
+
+**Status:** 201 Created
+
+Returns a JWT token as a plain string. Store this token and include it in the `Authorization` header for protected endpoints.
+
+### Example response
+
+```json
+"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJqb2huZG9lIiwicm9sZSI6IjIiLCJpYXQiOjE3MDAwMDAwMDB9.abc123"
+```
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Validation error — a required field is missing, a string constraint is violated, or `birthDate` is in the future |

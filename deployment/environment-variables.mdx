@@ -1,0 +1,126 @@
+---
+title: "Environment variables"
+description: "Complete reference for all environment variables required to run the Ubik Backend microservices stack."
+---
+
+All configuration is supplied through environment variables. In a Docker Compose deployment, create a `.env` file in `microservicios/microreactivo/` alongside `docker-compose.yml`. Variables marked **Required** have no safe fallback — the service will fail to start or behave incorrectly without them.
+
+## Database
+
+Shared by `usermanagement-service`, `motel-management-service`, and `payment-service`.
+
+| Variable | Required | Description | Example |
+|---|---|---|---|
+| `SPRING_R2DBC_URL` | Required | R2DBC connection URL for PostgreSQL | `r2dbc:postgresql://dbubik.postgres.database.azure.com:5432/postgres` |
+| `SPRING_R2DBC_USERNAME` | Required | Database user | `ubik` |
+| `SPRING_R2DBC_PASSWORD` | Required | Database password | `s3cr3tPassword!` |
+
+<Info>
+  The URL scheme is `r2dbc:postgresql://` (not `jdbc:`). Spring R2DBC will refuse to start if a JDBC URL is supplied.
+</Info>
+
+## JWT
+
+Shared by `usermanagement-service` and `gateway`. Both services must use identical values.
+
+| Variable | Required | Default | Description | Example |
+|---|---|---|---|---|
+| `JWT_SECRET` | Required | — | HMAC-SHA256 signing key; must be at least 256 bits (32 characters) | `mySuperSecretKey1234567890abcdef` |
+| `JWT_EXPIRATION` | Optional | `86400000` | Token lifetime in milliseconds | `3600000` (1 hour) |
+
+<Warning>
+  `JWT_SECRET` must be identical on `usermanagement-service` (which signs tokens) and `gateway` (which validates them). A mismatch causes every login token to be rejected with `401 Unauthorized`.
+</Warning>
+
+## Roles
+
+Shared by `gateway` and `motel-management-service`. All three values must match across both services.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `ROLE_ID_ADMIN` | Required | `7392841056473829` | Numeric ID for the administrator role |
+| `ROLE_ID_PROPERTY_OWNER` | Required | `3847261094857362` | Numeric ID for the property owner role |
+| `ROLE_ID_USER` | Required | `9182736450192837` | Numeric ID for regular users |
+
+<Warning>
+  The default values are compile-time placeholders. Use unique, unpredictable numeric IDs in any deployed environment.
+</Warning>
+
+## Cloudinary
+
+Required by `motel-management-service` for motel image uploads.
+
+| Variable | Required | Description | Example |
+|---|---|---|---|
+| `CLOUDINARY_CLOUD_NAME` | Required | Cloudinary cloud name | `my-cloud` |
+| `CLOUDINARY_API_KEY` | Required | Cloudinary API key | `123456789012345` |
+| `CLOUDINARY_API_SECRET` | Required | Cloudinary API secret | `abcdefghijklmnopqrstuvwxyz` |
+
+## MercadoPago
+
+Required by `payment-service`.
+
+| Variable | Required | Default | Description | Example |
+|---|---|---|---|---|
+| `MERCADOPAGO_ACCESS_TOKEN` | Required | — | MercadoPago API access token | `APP_USR-...` |
+| `MERCADOPAGO_WEBHOOK_SECRET` | Required | — | Secret for verifying webhook signatures | `wh_secret_123` |
+| `MERCADOPAGO_CLIENT_ID` | Required | — | OAuth client ID | `123456789` |
+| `MERCADOPAGO_CLIENT_SECRET` | Required | — | OAuth client secret | `abcDEF123...` |
+| `MERCADOPAGO_REDIRECT_URI` | Required | — | OAuth redirect URI after authorization | `https://app.example.com/auth/mp/callback` |
+| `MP_FEE_PERCENT` | Optional | `10` | Platform fee percentage applied to payments | `10` |
+
+## Mail
+
+Required by `notification-service` for sending transactional emails.
+
+| Variable | Required | Description | Example |
+|---|---|---|---|
+| `MAIL_USERNAME` | Required | Gmail address used as sender | `ubikApp3@gmail.com` |
+| `MAIL_PASSWORD` | Required | Gmail App Password (not your account password) | `abcd efgh ijkl mnop` |
+
+<Tip>
+  Use a [Gmail App Password](https://support.google.com/accounts/answer/185833) rather than your account password. App Passwords work even when 2-Step Verification is enabled and can be revoked independently.
+</Tip>
+
+## Spring profile
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SPRING_PROFILES_ACTIVE` | Optional | — | Active Spring profile; set to `docker` in Compose | `docker` |
+
+When `SPRING_PROFILES_ACTIVE=docker`, each service loads its `application-docker.yml`, which sets `spring.sql.init.mode: never` — preventing Spring from attempting to run schema scripts against the production database.
+
+## Complete .env template
+
+```bash
+# Database
+SPRING_R2DBC_URL=r2dbc:postgresql://your-host:5432/postgres
+SPRING_R2DBC_USERNAME=ubik
+SPRING_R2DBC_PASSWORD=
+
+# JWT (must match on gateway and usermanagement-service)
+JWT_SECRET=
+JWT_EXPIRATION=86400000
+
+# Roles
+ROLE_ID_ADMIN=7392841056473829
+ROLE_ID_PROPERTY_OWNER=3847261094857362
+ROLE_ID_USER=9182736450192837
+
+# Cloudinary
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+
+# MercadoPago
+MERCADOPAGO_ACCESS_TOKEN=
+MERCADOPAGO_WEBHOOK_SECRET=
+MERCADOPAGO_CLIENT_ID=
+MERCADOPAGO_CLIENT_SECRET=
+MERCADOPAGO_REDIRECT_URI=
+MP_FEE_PERCENT=10
+
+# Mail
+MAIL_USERNAME=
+MAIL_PASSWORD=
+```

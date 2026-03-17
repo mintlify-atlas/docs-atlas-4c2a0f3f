@@ -1,0 +1,150 @@
+---
+title: "API Gateway"
+description: "The single entry point for all client traffic. Validates JWTs, injects identity headers, and routes requests to downstream services."
+---
+
+## Overview
+
+The API Gateway runs on port **8080** and is built on Spring Cloud Gateway with Spring WebFlux. It is stateless — it holds no application data and maintains no sessions. Every request is evaluated independently.
+
+The gateway has two responsibilities:
+1. **Authentication** — validate the `Authorization: Bearer <jwt>` header on protected routes.
+2. **Routing** — proxy the request to the correct downstream service.
+
+## Route table
+
+Routes are evaluated in the order they appear in `application.yml`. More specific routes must come before more general ones.
+
+| Route ID | Path pattern | Upstream service | Notes |
+|---|---|---|---|
+| `motel-management-my-motels` | `GET /api/auth/motels/my-motels` | `motel-management-service:8083` | Exact match; must precede the variable route |
+| `motel-management-auth-motels-userid` | `GET /api/auth/motels/{userId}` | `motel-management-service:8083` | Authenticated motel lookup by owner ID |
+| `userManagement-auth` | `/api/auth/**` | `usermanagement-service:8081` | Login, register, password reset |
+| `userManagement-profile` | `/api/user/**` | `usermanagement-service:8081` | Profile read/update/delete |
+| `notificationService` | `/api/notifications/**` | `notificationService:8084` | Internal email delivery |
+| `motel-management-motels` | `/api/motels/**` | `motel-management-service:8083` | Public motel browsing |
+| `motel-management-rooms` | `/api/rooms/**` | `motel-management-service:8083` | Room listings |
+| `motel-management-services` | `/api/services/**` | `motel-management-service:8083` | Motel amenity services |
+| `motel-reservations` | `/api/reservations/**` | `motel-management-service:8083` | Booking CRUD |
+| `payment-service` | `/api/payments/**` | `payment-service:8085` | Payment processing |
+
+<Note>
+All routes use `StripPrefix=0`, so path prefixes are forwarded as-is to downstream services. A request to `GET /api/motels/42` reaches the motel service as `GET /api/motels/42`.
+</Note>
+
+## JWT authentication filter
+
+`JwtAuthenticationFilter` implements Spring WebFlux's `WebFilter` and runs at `SecurityWebFiltersOrder.AUTHENTICATION`. It processes every request before it is forwarded.
+
+### Filter logic
+
+```java
+// 1. Pass through OPTIONS (CORS preflight) unconditionally
+if (method == HttpMethod.OPTIONS) {
+    return chain.filter(exchange);
+}
+
+// 2. Skip filter for public paths
+if (isPublicPath(path, method)) {
+    return chain.filter(exchange);
+}
+
+// 3. Require Authorization: Bearer <token>
+String token = authHeader.substring(7);
+Map<String, Object> claims = jwtValidatorPort.validateToken(token);
+
+// 4. Inject identity headers into the forwarded request
+ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
+    .header("X-User-Username", username)
+    .header("X-User-Role", role)
+    .header("X-User-Id", userId)
+    .build();
+```
+
+### Public path rules
+
+| Rule | Condition | Allowed |
+|---|---|---|
+| CORS preflight | `OPTIONS` any path | Yes |
+| Auth endpoints | `/api/auth/**` (excluding `/api/auth/motels/**`) | Yes |
+| Actuator | `/actuator/**` | Yes |
+| Public reads | `GET /api/motels/**`, `GET /api/rooms/**`, `GET /api/services/**` | Yes |
+| All other requests | Any method, any path | No — JWT required |
+
+<Warning>
+`/api/auth/motels/**` is **not** a public path despite starting with `/api/auth/`. The filter explicitly excludes it from the public auth prefix. Requests to these routes require a valid JWT.
+</Warning>
+
+## Headers injected downstream
+
+After a JWT is validated, the following headers are added to the forwarded request. Downstream services read these headers directly and never parse a JWT.
+
+| Header | Source claim | Default if missing |
+|---|---|---|
+| `X-User-Username` | `sub` | — (rejected as 401) |
+| `X-User-Role` | `role` | `USER` |
+| `X-User-Id` | `userId` | `0` |
+
+## Security configuration
+
+The `SecurityConfig` class configures Spring Security for WebFlux. CSRF is disabled (stateless JWT API), HTTP Basic and form login are disabled, and CORS is configured to allow any origin.
+
+### Authorization rules
+
+```java
+.authorizeExchange(exchanges -> exchanges
+    .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+    .pathMatchers("/api/auth/**").permitAll()
+    .pathMatchers("/actuator/**").permitAll()
+    .pathMatchers(HttpMethod.GET, "/api/motels/**").permitAll()
+    .pathMatchers(HttpMethod.GET, "/api/rooms/**").permitAll()
+    .pathMatchers(HttpMethod.GET, "/api/services/**").permitAll()
+    .pathMatchers("/api/admin/motels/**").hasAuthority("ROLE_" + ROLE_ID_ADMIN)
+    .pathMatchers(HttpMethod.GET, "/api/auth/motels/**").authenticated()
+    .pathMatchers(HttpMethod.POST, "/api/motels/**").authenticated()
+    // ... write operations on rooms, services, reservations
+    .pathMatchers(HttpMethod.POST, "/api/payments/webhook").permitAll() // MercadoPago has no JWT
+    .pathMatchers("/api/payments/**").authenticated()
+    .anyExchange().authenticated()
+)
+```
+
+<Info>
+The webhook endpoint `POST /api/payments/webhook` is explicitly public because MercadoPago calls it server-to-server without a user JWT.
+</Info>
+
+### CORS policy
+
+The gateway applies a permissive CORS policy suitable for development. Tighten `allowedOriginPatterns` for production:
+
+```java
+configuration.setAllowedOriginPatterns(List.of("*"));
+configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"));
+configuration.setAllowedHeaders(List.of("*"));
+configuration.setExposedHeaders(List.of("Authorization", "Content-Type",
+    "X-User-Username", "X-User-Role", "X-User-Id"));
+configuration.setAllowCredentials(true);
+configuration.setMaxAge(3600L);
+```
+
+## Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `JWT_SECRET` | Yes | HMAC-SHA256 signing key. Must match the key used by User Management to issue tokens. |
+| `JWT_EXPIRATION` | No | Token TTL in milliseconds. Default: `86400000` (24 hours). |
+| `ROLE_ID_ADMIN` | Yes | Numeric role ID for the ADMIN role. |
+| `ROLE_ID_PROPERTY_OWNER` | Yes | Numeric role ID for the PROPERTY_OWNER role. |
+| `ROLE_ID_USER` | Yes | Numeric role ID for the USER role. |
+
+## Actuator endpoints
+
+The gateway exposes health, info, metrics, and the gateway route actuator:
+
+```bash
+# Health check
+curl http://localhost:8080/actuator/health
+
+# List all configured routes
+curl http://localhost:8080/actuator/gateway/routes
+```

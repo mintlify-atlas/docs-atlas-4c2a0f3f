@@ -1,0 +1,171 @@
+---
+title: "Motel Management Service"
+description: "Manages motels, rooms, reservations, and motel-level services including the approval workflow and Cloudinary image uploads."
+---
+
+## Overview
+
+The Motel Management Service runs on port **8083** (`motel-management-service` container). It is the largest service in the system and owns four domain aggregates: `Motel`, `Room`, `Reservation`, and `Service` (motel amenity offerings).
+
+The service resolves usernames to database IDs by calling User Management via WebClient (`http://usermanagement-service:8081`) — this is necessary because downstream requests only carry `X-User-Username`, not a primary key.
+
+## Domain model
+
+| Entity | Key fields | Notes |
+|---|---|---|
+| `Motel` | `id`, `name`, `address`, `city`, `propertyId`, `approvalStatus` | `propertyId` is the owner's user ID |
+| `Room` | `id`, `motelId`, `name`, `capacity`, `pricePerNight`, `available` | Belongs to a Motel |
+| `Reservation` | `id`, `roomId`, `userId`, `checkInDate`, `checkOutDate`, `status`, `totalPrice`, `confirmationCode` | Lifecycle managed via PATCH endpoints |
+| `Service` | `id`, `motelId`, `name`, `description`, `price` | Optional amenities offered by a motel |
+
+## Motel endpoints
+
+Base path: `/api/motels`
+
+### Public endpoints (no authentication)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/motels` | List all motels |
+| `GET` | `/api/motels/{id}` | Get a motel by ID |
+| `GET` | `/api/motels/city/{city}` | List motels by city |
+
+### Protected endpoints
+
+| Method | Path | Roles allowed | Description |
+|---|---|---|---|
+| `POST` | `/api/motels` | PROPERTY_OWNER, ADMIN | Create a new motel |
+| `PUT` | `/api/motels/{id}` | PROPERTY_OWNER (own), ADMIN (any) | Update a motel |
+| `DELETE` | `/api/motels/{id}` | PROPERTY_OWNER (own), ADMIN (any) | Delete a motel |
+| `GET` | `/api/auth/motels/my-motels` | Any authenticated | List caller's own motels |
+| `GET` | `/api/auth/motels/{userId}` | Any authenticated | List motels by owner user ID |
+
+<Info>
+When creating a motel, any `propertyId` value in the request body is ignored. The service resolves the real owner ID from the `X-User-Username` header by looking up the user in its local replica of the user table.
+</Info>
+
+### Create motel example
+
+```bash
+curl -X POST http://localhost:8080/api/motels \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "name": "Hotel Ubik",
+    "address": "Calle 123 #45-67",
+    "phoneNumber": "+573001234567",
+    "description": "Boutique motel in the city centre.",
+    "city": "Bogota",
+    "latitude": 4.711,
+    "longitude": -74.0721,
+    "rues": "12345678",
+    "rnt": "RNT-9876",
+    "ownerDocumentType": "CC",
+    "ownerDocumentNumber": "1000000001",
+    "ownerFullName": "Alice Owner"
+  }'
+```
+
+## Room endpoints
+
+Base path: `/api/rooms`
+
+### Public (GET only)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/rooms` | List all rooms |
+| `GET` | `/api/rooms/{id}` | Get a room by ID |
+| `GET` | `/api/rooms/motel/{motelId}` | List rooms for a motel |
+| `GET` | `/api/rooms/motel/{motelId}/available` | List available rooms for a motel |
+
+### Protected (write operations)
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/rooms` | Create a new room |
+| `PUT` | `/api/rooms/{id}` | Update a room |
+| `DELETE` | `/api/rooms/{id}` | Delete a room |
+
+## Reservation endpoints
+
+Base path: `/api/reservations` — all endpoints require authentication.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/reservations` | Create a reservation |
+| `GET` | `/api/reservations/{id}` | Get reservation by ID |
+| `GET` | `/api/reservations` | List all reservations |
+| `GET` | `/api/reservations/room/{roomId}` | Reservations for a room |
+| `GET` | `/api/reservations/user/{userId}` | Reservations for a user |
+| `GET` | `/api/reservations/room/{roomId}/active` | Active reservations for a room |
+| `GET` | `/api/reservations/status/{status}` | Filter by status |
+| `GET` | `/api/reservations/room/{roomId}/available` | Check availability for a date range |
+| `PUT` | `/api/reservations/{id}` | Update a reservation |
+| `PATCH` | `/api/reservations/{id}/confirm` | Confirm a reservation |
+| `PATCH` | `/api/reservations/{id}/cancel` | Cancel a reservation |
+| `PATCH` | `/api/reservations/{id}/checkin` | Perform check-in |
+| `PATCH` | `/api/reservations/{id}/checkout` | Perform check-out |
+| `DELETE` | `/api/reservations/{id}` | Delete a reservation (cancelled only) |
+
+### Check availability example
+
+```bash
+curl "http://localhost:8080/api/reservations/room/5/available\
+?checkIn=2026-06-01T14:00:00&checkOut=2026-06-03T12:00:00" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns `true` if the room has no overlapping confirmed reservations in that window.
+
+## Approval workflow
+
+New motels start in `PENDING` status. An admin reviews and moves them through the following states:
+
+```
+PENDING → UNDER_REVIEW → APPROVED
+                       → REJECTED  (with rejectionReason)
+```
+
+<Note>
+Only `APPROVED` motels are visible to regular users in public listing endpoints. The approval state is stored on the `Motel` entity and transitions are managed by admin-only endpoints under `/api/admin/motels/**`.
+</Note>
+
+The `Motel` domain model carries the full audit trail:
+
+| Field | Description |
+|---|---|
+| `approvalStatus` | Current state in the workflow |
+| `approvalDate` | Timestamp when approved or rejected |
+| `approvedByUserId` | User ID of the admin who acted |
+| `rejectionReason` | Free-text reason for rejection |
+
+## Cloudinary integration
+
+Motel images are stored in Cloudinary. The service is configured with three environment variables and handles upload, replacement, and deletion of images for a motel's `imageUrls` array.
+
+File size limits are enforced at the Spring level:
+
+```yaml
+spring:
+  codec:
+    max-in-memory-size: 10MB
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 50MB
+```
+
+## Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `SPRING_R2DBC_URL` | Yes | R2DBC PostgreSQL connection URL |
+| `SPRING_R2DBC_USERNAME` | Yes | Database username |
+| `SPRING_R2DBC_PASSWORD` | Yes | Database password |
+| `CLOUDINARY_CLOUD_NAME` | Yes | Cloudinary cloud name |
+| `CLOUDINARY_API_KEY` | Yes | Cloudinary API key |
+| `CLOUDINARY_API_SECRET` | Yes | Cloudinary API secret |
+| `ROLE_ID_ADMIN` | Yes | Numeric ID for the ADMIN role |
+| `ROLE_ID_PROPERTY_OWNER` | Yes | Numeric ID for the PROPERTY_OWNER role |
+| `ROLE_ID_USER` | Yes | Numeric ID for the USER role |

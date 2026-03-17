@@ -1,0 +1,227 @@
+---
+title: "Azure deployment"
+description: "Deploy the Ubik Backend stack on an Azure Virtual Machine using Azure Database for PostgreSQL Flexible Server and a systemd-managed autostart service."
+---
+
+This guide covers a production-grade Azure deployment. The application containers run on a single Linux VM. The database runs on Azure Database for PostgreSQL Flexible Server — a fully managed service external to the VM. A `systemd` service (`docker-autostart`) starts the containers automatically on VM boot.
+
+## Architecture overview
+
+```
+┌─────────────────────────────────────┐      ┌──────────────────────────────────┐
+│  Azure VM (Ubuntu)                  │      │  Azure Database for PostgreSQL   │
+│                                     │      │  Flexible Server                 │
+│  ┌──────────────────────────────┐   │      │                                  │
+│  │  docker-autostart.service    │   │      │  Host: dbubik.postgres.database  │
+│  │  (systemd, starts on boot)   │   │      │       .azure.com:5432            │
+│  └──────────────┬───────────────┘   │      │  DB:   postgres                  │
+│                 │                   │      └───────────────┬──────────────────┘
+│  ┌──────────────▼───────────────┐   │                      │
+│  │  Docker Compose              │   │                      │ R2DBC
+│  │  gateway            :8080    │   │                      │
+│  │  usermanagement     :8081    ├───┼──────────────────────┘
+│  │  motel-management   :8083    │   │
+│  │  notification       :8084    │   │
+│  │  payment            :8085    │   │
+│  └──────────────────────────────┘   │
+│                                     │
+│  Nginx (reverse proxy → :8080)      │
+└─────────────────────────────────────┘
+```
+
+## Prerequisites
+
+- An Azure VM running Ubuntu 22.04 LTS with Docker Engine installed
+- An Azure Database for PostgreSQL Flexible Server instance
+- The repository cloned to `/home/azureuser/ubik-front/`
+- A populated `.env` file in `microservicios/microreactivo/`
+
+## Step-by-step setup
+
+<Steps>
+  <Step title="Provision Azure Flexible PostgreSQL">
+    Create the database server in Azure Portal or via the CLI:
+
+    ```bash
+    az postgres flexible-server create \
+      --name dbubik \
+      --resource-group ubik-rg \
+      --location eastus \
+      --admin-user ubik \
+      --admin-password "YourStrongPassword!" \
+      --sku-name Standard_B1ms \
+      --tier Burstable \
+      --version 16
+    ```
+
+    Add a firewall rule allowing the VM's public IP:
+
+    ```bash
+    az postgres flexible-server firewall-rule create \
+      --name allow-vm \
+      --resource-group ubik-rg \
+      --server-name dbubik \
+      --start-ip-address <VM_PUBLIC_IP> \
+      --end-ip-address <VM_PUBLIC_IP>
+    ```
+  </Step>
+  <Step title="Configure environment variables">
+    On the VM, create the `.env` file:
+
+    ```bash
+    cd /home/azureuser/ubik-front/microservicios/microreactivo
+    nano .env
+    ```
+
+    Set at minimum:
+
+    ```bash
+    SPRING_R2DBC_URL=r2dbc:postgresql://dbubik.postgres.database.azure.com:5432/postgres
+    SPRING_R2DBC_USERNAME=ubik
+    SPRING_R2DBC_PASSWORD=YourStrongPassword!
+    JWT_SECRET=your-256-bit-secret
+    ROLE_ID_ADMIN=7392841056473829
+    ROLE_ID_PROPERTY_OWNER=3847261094857362
+    ROLE_ID_USER=9182736450192837
+    # ... all other variables
+    ```
+
+    See [Environment variables](/deployment/environment-variables) for the complete list.
+  </Step>
+  <Step title="Build the Docker images">
+    ```bash
+    cd /home/azureuser/ubik-front/microservicios/microreactivo
+    docker compose build
+    ```
+
+    This step can take several minutes on the first run as Maven downloads dependencies inside each build container.
+  </Step>
+  <Step title="Install the autostart systemd service">
+    Run the installation script as root:
+
+    ```bash
+    sudo ./install-autostart-azure.sh
+    ```
+
+    The script:
+    - Creates `/usr/local/bin/docker-autostart.sh` — the boot script that waits for Docker, runs `docker compose up -d`, and verifies all health endpoints.
+    - Creates `/etc/systemd/system/docker-autostart.service` with `After=docker.service network-online.target`.
+    - Enables the service with `systemctl enable docker-autostart.service`.
+    - Creates helper scripts at `~/check-services.sh` and `~/emergency-restart.sh`.
+    - Creates a log file at `/var/log/docker-autostart.log`.
+  </Step>
+  <Step title="Start the services">
+    Start immediately without rebooting:
+
+    ```bash
+    sudo systemctl start docker-autostart
+    ```
+
+    Or reboot the VM to verify the autostart path:
+
+    ```bash
+    sudo reboot
+    ```
+  </Step>
+  <Step title="Verify the deployment">
+    ```bash
+    # Check systemd service status
+    sudo systemctl status docker-autostart
+
+    # Run the health check helper
+    ~/check-services.sh
+
+    # Curl the gateway
+    curl http://localhost:8080/actuator/health
+    ```
+  </Step>
+</Steps>
+
+## The ubik-start.sh script
+
+The `ubik-start.sh` script at `/home/azureuser/ubik-start.sh` is an alternative startup script used as the `ExecStart` in some VM configurations. It performs the same steps as the `docker-autostart.sh` installed by `install-autostart-azure.sh`, and additionally:
+
+- Kills any processes occupying ports 8080, 8081, 8083, and 8084 before starting.
+- Runs `docker compose up -d` from `COMPOSE_DIR=/home/azureuser/ubik-front/microservicios/microreactivo`.
+- Waits for the gateway health endpoint (up to 20 retries, 10 seconds apart).
+- Restarts Nginx after containers are healthy.
+
+Logs are written to `/var/log/ubik-startup.log`.
+
+## The docker profile
+
+All containers run with `SPRING_PROFILES_ACTIVE=docker`, which activates `application-docker.yml` in each service. This profile sets:
+
+```yaml
+spring:
+  sql:
+    init:
+      mode: never
+```
+
+<Warning>
+  `spring.sql.init.mode: never` prevents Spring Boot from executing `schema.sql` or `data.sql` on startup. Do **not** change this to `always` or `embedded` in production — it will attempt to re-run DDL statements against your live database.
+</Warning>
+
+The R2DBC pool settings in the docker profile are also tuned for a shared Flexible Server:
+
+```yaml
+spring:
+  r2dbc:
+    pool:
+      initial-size: 5
+      max-size: 15
+      max-idle-time: 30m
+      max-acquire-time: 3m
+```
+
+## Monitoring and operations
+
+### View logs
+
+```bash
+# Autostart service logs
+sudo journalctl -u docker-autostart -f
+
+# Startup script log file
+sudo tail -f /var/log/docker-autostart.log
+
+# Container logs
+docker compose logs -f gateway
+```
+
+### Emergency restart
+
+If containers enter a bad state, use the generated helper:
+
+```bash
+~/emergency-restart.sh
+```
+
+This runs `docker compose down --remove-orphans`, prunes orphaned containers, rebuilds images with `--no-cache`, and starts fresh.
+
+### Check Azure PostgreSQL connectivity
+
+The `check-services.sh` script tests TCP reachability of `dbubik.postgres.database.azure.com:5432`. If it fails, check the Flexible Server firewall rules in Azure Portal — the VM's public IP must be in the allowed range.
+
+<AccordionGroup>
+  <Accordion title="Service fails to start after a VM restart">
+    1. Check that Docker started before the service: `sudo systemctl status docker`
+    2. Check the autostart log: `sudo tail -50 /var/log/docker-autostart.log`
+    3. Verify the `.env` file is present and all required variables are set.
+    4. Run `~/emergency-restart.sh` to force a clean rebuild.
+  </Accordion>
+  <Accordion title="401 Unauthorized on all requests after deploy">
+    The `JWT_SECRET` or role ID environment variables are inconsistent between services. Confirm that `JWT_SECRET` in the gateway and `usermanagement-service` containers are identical:
+
+    ```bash
+    docker exec gateway env | grep JWT_SECRET
+    docker exec usermanagement-service env | grep JWT_SECRET
+    ```
+  </Accordion>
+  <Accordion title="Cannot connect to Azure PostgreSQL">
+    1. Confirm the VM public IP is in the Flexible Server firewall rules.
+    2. Test connectivity from the VM: `nc -zv dbubik.postgres.database.azure.com 5432`
+    3. Verify `SPRING_R2DBC_URL` uses the `r2dbc:postgresql://` scheme, not `jdbc:`.
+  </Accordion>
+</AccordionGroup>

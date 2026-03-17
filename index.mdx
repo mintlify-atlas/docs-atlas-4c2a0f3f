@@ -1,97 +1,93 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Ubik Backend"
+description: "Reactive microservices backend for a motel booking platform — user auth, reservations, payments, and more."
 ---
 
-## Setting up
+## What is Ubik Backend?
 
-Get your documentation site up and running in minutes.
+Ubik Backend is a production-ready reactive microservices system built with **Spring WebFlux** and **Spring Cloud Gateway**. It powers a motel booking platform where property owners can list their motels and guests can browse, reserve, and pay — all through a single API entry point.
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get the full stack running locally in minutes with Docker Compose.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    Understand the five microservices, gateway routing, and data flow.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="API Reference" icon="code" href="/api-reference/auth/register">
+    Explore every endpoint — auth, motels, rooms, reservations, payments.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Deployment" icon="cloud" href="/deployment/docker-compose">
+    Deploy to Docker or Azure with environment variable configuration.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Key features
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="Reactive architecture" icon="bolt">
+    Fully non-blocking I/O with Spring WebFlux and R2DBC PostgreSQL. All services return `Mono` and `Flux` streams.
+  </Card>
+  <Card title="JWT authentication" icon="lock">
+    Gateway-level JWT validation with role-based access control. Three roles: `USER`, `PROPERTY_OWNER`, and `ADMIN`.
+  </Card>
+  <Card title="Motel & room management" icon="building">
+    Property owners can register motels, add rooms with images via Cloudinary, and manage services per room.
+  </Card>
+  <Card title="Reservation system" icon="calendar">
+    Full reservation lifecycle: create, confirm, check-in, check-out, and cancel — with availability checks.
+  </Card>
+  <Card title="MercadoPago payments" icon="credit-card">
+    OAuth-based MercadoPago integration. Create payment preferences, handle webhooks, and process refunds.
+  </Card>
+  <Card title="Admin approval workflow" icon="shield-check">
+    Admins review and approve motel registrations. Legal document verification before a motel goes live.
+  </Card>
+  <Card title="Email notifications" icon="envelope">
+    Dedicated notification microservice sends transactional emails for registrations, reservations, and password resets.
+  </Card>
+  <Card title="Hexagonal architecture" icon="hexagon">
+    Each service uses ports-and-adapters pattern — domain logic is fully isolated from infrastructure concerns.
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Microservices overview
 
-## Need inspiration?
+| Service | Port | Responsibility |
+|---|---|---|
+| **Gateway** | 8080 | JWT validation, routing, RBAC header injection |
+| **User Management** | 8081 | Registration, login, JWT issuance, user profiles |
+| **Motel Management** | 8083 | Motels, rooms, services, reservations, images |
+| **Notification Service** | 8084 | Transactional email delivery |
+| **Payment Service** | 8085 | MercadoPago OAuth, payment preferences, webhooks |
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<Note>
+  All external traffic enters through the **Gateway** on port 8080. Internal services communicate over a shared Docker network and are never exposed directly in production.
+</Note>
+
+## Get started
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/ubik-back/ubik-backend.git
+    cd ubik-backend/microservicios/microreactivo
+    ```
+  </Step>
+  <Step title="Configure environment variables">
+    Copy the required variables for database, JWT, Cloudinary, and MercadoPago credentials. See the [Environment Variables](/deployment/environment-variables) guide.
+  </Step>
+  <Step title="Start all services">
+    ```bash
+    docker compose up --build
+    ```
+    The gateway will be available at `http://localhost:8080`.
+  </Step>
+  <Step title="Register your first user">
+    ```bash
+    curl -X POST http://localhost:8080/api/auth/register \
+      -H "Content-Type: application/json" \
+      -d '{"username":"john","email":"john@example.com","password":"secret123","roleId":"<USER_ROLE_ID>"}'
+    ```
+  </Step>
+</Steps>

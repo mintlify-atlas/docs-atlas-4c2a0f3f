@@ -1,0 +1,68 @@
+---
+title: "Introduction"
+description: "Ubik Backend is a reactive microservices platform that powers a motel booking system, built with Spring WebFlux and R2DBC."
+---
+
+## What is Ubik Backend?
+
+Ubik Backend is a reactive microservices platform built on Spring Boot 3 and Spring WebFlux. It provides all server-side logic for a motel booking marketplace: user authentication, motel and room management, reservations, payment processing, and transactional email notifications.
+
+All services are fully non-blocking, using Project Reactor (`Mono`/`Flux`) end-to-end — from the HTTP layer through R2DBC database access. This means no thread blocking anywhere in the request path, enabling high concurrency on modest hardware.
+
+## Platform architecture
+
+The system is composed of five independent microservices, all reachable through a single API Gateway:
+
+| Service | Port | Responsibility |
+|---|---|---|
+| API Gateway | 8080 | JWT validation, routing, CORS |
+| User Management | 8081 | Registration, login, profiles |
+| Motel Management | 8083 | Motels, rooms, reservations |
+| Notification Service | 8084 | Transactional email delivery |
+| Payment Service | 8085 | MercadoPago payment processing |
+
+All five containers run on the `ubik-network` Docker bridge network and communicate with each other by container name.
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Spring Boot 3.2, Spring WebFlux |
+| Database access | R2DBC + PostgreSQL |
+| Security | Spring Security (WebFlux), JWT (HMAC-SHA256) |
+| Image storage | Cloudinary |
+| Payments | MercadoPago Marketplace API |
+| Email | Spring Mail (SMTP / Gmail) |
+| Build | Maven (multi-module), Java 17 |
+| Infrastructure | Docker Compose |
+
+## User roles
+
+Every JWT issued at login carries a `role` claim. Three role IDs govern access control across all services:
+
+- **USER** — can browse motels and rooms, create reservations, and initiate payments.
+- **PROPERTY_OWNER** — can create and manage their own motels and rooms, in addition to all USER privileges.
+- **ADMIN** — unrestricted access; can approve or reject motel registrations, refund payments, and manage any resource.
+
+Role IDs are opaque numeric strings (e.g. `7392841056473829`) injected at runtime via environment variables. The gateway reads them from `ROLE_ID_ADMIN`, `ROLE_ID_PROPERTY_OWNER`, and `ROLE_ID_USER`.
+
+<Note>
+Role IDs are not the strings `"USER"` or `"ADMIN"`. They are numeric identifiers shared across all services via environment variables. Every service that makes authorization decisions reads the same environment variables so IDs stay consistent.
+</Note>
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Clone the repo, configure environment variables, and make your first API call in minutes.
+  </Card>
+  <Card title="System architecture" icon="diagram-project" href="/architecture">
+    Understand how the services connect, how JWT claims flow through the system, and how Docker networking is wired.
+  </Card>
+  <Card title="API Gateway" icon="shield-halved" href="/services/gateway">
+    Learn how every request is authenticated, which routes are public, and which headers get injected downstream.
+  </Card>
+  <Card title="Motel Management" icon="building" href="/services/motel-management">
+    Explore the domain model, approval workflow, and Cloudinary image integration.
+  </Card>
+</CardGroup>

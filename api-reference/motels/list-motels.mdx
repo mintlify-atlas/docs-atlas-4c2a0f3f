@@ -1,0 +1,187 @@
+---
+title: "GET /api/motels"
+description: "List all motels, or filter by city. Both endpoints are public."
+---
+
+## Overview
+
+Two public endpoints return lists of motels:
+
+- `GET /api/motels` — returns every motel in the system.
+- `GET /api/motels/city/{city}` — returns motels filtered by city name.
+
+No authentication is required for either endpoint.
+
+---
+
+## List all motels
+
+**Method:** GET  
+**Path:** `/api/motels`  
+**Auth required:** No
+
+### Example request
+
+```bash
+curl http://localhost:8080/api/motels
+```
+
+---
+
+## List motels by city
+
+**Method:** GET  
+**Path:** `/api/motels/city/{city}`  
+**Auth required:** No
+
+### Path parameters
+
+<ParamField path="city" type="string" required>
+  Name of the city to filter by (case-sensitive).
+</ParamField>
+
+### Example request
+
+```bash
+curl http://localhost:8080/api/motels/city/Bogota
+```
+
+---
+
+## Response
+
+**Status:** 200 OK
+
+Returns an array of motel objects.
+
+### Response body (array item)
+
+<ResponseField name="id" type="integer">
+  Unique numeric identifier of the motel.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Name of the motel.
+</ResponseField>
+
+<ResponseField name="address" type="string">
+  Street address.
+</ResponseField>
+
+<ResponseField name="phoneNumber" type="string">
+  Contact phone number, or `null`.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Text description of the motel, or `null`.
+</ResponseField>
+
+<ResponseField name="city" type="string">
+  City where the motel is located.
+</ResponseField>
+
+<ResponseField name="propertyId" type="integer">
+  ID of the user (property owner) who registered the motel.
+</ResponseField>
+
+<ResponseField name="dateCreated" type="string">
+  ISO-8601 datetime when the motel was created.
+</ResponseField>
+
+<ResponseField name="imageUrls" type="array">
+  List of image URLs for the motel (up to 10 items).
+</ResponseField>
+
+<ResponseField name="latitude" type="number">
+  Geographic latitude of the motel, or `null`.
+</ResponseField>
+
+<ResponseField name="longitude" type="number">
+  Geographic longitude of the motel, or `null`.
+</ResponseField>
+
+<ResponseField name="approvalStatus" type="string">
+  Current approval state. One of: `PENDING`, `UNDER_REVIEW`, `APPROVED`, `REJECTED`.
+</ResponseField>
+
+<ResponseField name="approvalDate" type="string">
+  ISO-8601 datetime when the motel was approved or rejected, or `null`.
+</ResponseField>
+
+<ResponseField name="approvedByUserId" type="integer">
+  ID of the admin user who approved or rejected the motel, or `null`.
+</ResponseField>
+
+<ResponseField name="rejectionReason" type="string">
+  Reason provided when the motel was rejected, or `null`.
+</ResponseField>
+
+<ResponseField name="rues" type="string">
+  Registro Único Empresarial y Social (business registry number).
+</ResponseField>
+
+<ResponseField name="rnt" type="string">
+  Registro Nacional de Turismo (national tourism registry number).
+</ResponseField>
+
+<ResponseField name="ownerDocumentType" type="string">
+  Identity document type of the owner. One of: `CC`, `NIT`, `CE`, `PASAPORTE`.
+</ResponseField>
+
+<ResponseField name="ownerDocumentNumber" type="string">
+  Owner's identity document number.
+</ResponseField>
+
+<ResponseField name="ownerFullName" type="string">
+  Full legal name of the owner.
+</ResponseField>
+
+<ResponseField name="legalRepresentativeName" type="string">
+  Name of the legal representative, or `null` if not applicable.
+</ResponseField>
+
+<ResponseField name="legalDocumentUrl" type="string">
+  URL of the main legal document, or `null`.
+</ResponseField>
+
+<ResponseField name="hasCompleteLegalInfo" type="boolean">
+  `true` when all required legal fields (`rues`, `rnt`, `ownerDocumentType`, `ownerDocumentNumber`, `ownerFullName`) are present.
+</ResponseField>
+
+### Example response
+
+```json
+[
+  {
+    "id": 1,
+    "name": "Motel Las Palmas",
+    "address": "Calle 72 # 45-10",
+    "phoneNumber": "+576012345678",
+    "description": "Comfortable rooms with parking",
+    "city": "Bogota",
+    "propertyId": 7,
+    "dateCreated": "2024-03-01T09:00:00",
+    "imageUrls": ["https://cdn.example.com/motel1.jpg"],
+    "latitude": 4.6501,
+    "longitude": -74.1001,
+    "approvalStatus": "APPROVED",
+    "approvalDate": "2024-03-05T14:00:00",
+    "approvedByUserId": 1,
+    "rejectionReason": null,
+    "rues": "900123456-1",
+    "rnt": "47-RNT-1234",
+    "ownerDocumentType": "CC",
+    "ownerDocumentNumber": "1234567890",
+    "ownerFullName": "Carlos Andres Lopez",
+    "legalRepresentativeName": null,
+    "legalDocumentUrl": "https://cdn.example.com/doc.pdf",
+    "hasCompleteLegalInfo": true
+  }
+]
+```
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 404 | City not found or no motels match the given city (returns empty array in practice) |

@@ -1,0 +1,45 @@
+---
+title: "DELETE /api/user"
+description: "Permanently delete the account of the currently authenticated user."
+---
+
+## Overview
+
+Permanently deletes the account associated with the authenticated user. This action is irreversible. The gateway injects the username from the JWT into the `X-User-Username` header, which the service uses to locate and delete the record.
+
+<Warning>
+  Account deletion is permanent and cannot be undone. All user data is removed.
+</Warning>
+
+## Request
+
+**Method:** DELETE  
+**Path:** `/api/user`  
+**Auth required:** Yes (Bearer token)
+
+### Headers
+
+| Header | Description |
+|--------|-------------|
+| `Authorization` | `Bearer <jwt>` — required |
+| `X-User-Username` | Injected automatically by the gateway from the JWT `sub` claim. Do not set this manually. |
+
+### Example request
+
+```bash
+curl -X DELETE http://localhost:8080/api/user \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
+```
+
+## Response
+
+**Status:** 204 No Content
+
+No response body is returned on success.
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 401 | Missing or invalid JWT |
+| 404 | User not found for the username in `X-User-Username` |

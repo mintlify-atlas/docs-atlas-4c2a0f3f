@@ -1,0 +1,223 @@
+---
+title: "GET /api/reservations/{id}"
+description: "Retrieve a reservation by ID, room, user, or status"
+---
+
+## Overview
+
+Retrieves reservation data. This page documents four read endpoints: fetching a single reservation by its ID, fetching all reservations for a specific room, fetching all reservations for a specific user, and fetching reservations filtered by status. There is also an endpoint to retrieve only the active reservations for a room.
+
+---
+
+## GET /api/reservations/{id}
+
+Returns a single reservation by its unique ID.
+
+**Method:** GET  
+**Path:** `/api/reservations/{id}`  
+**Auth required:** Yes  
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The unique ID of the reservation.
+</ParamField>
+
+### Example request
+
+```bash
+curl http://localhost:8080/api/reservations/47 \
+  -H "Authorization: Bearer <token>"
+```
+
+### Example response
+
+**Status:** 200 OK
+
+```json
+{
+  "id": 47,
+  "roomId": 12,
+  "userId": 3,
+  "checkInDate": "2026-03-20T15:00:00",
+  "checkOutDate": "2026-03-21T11:00:00",
+  "status": "CONFIRMED",
+  "totalPrice": 250000.0,
+  "specialRequests": "Late check-in requested",
+  "confirmationCode": "UBIK-20260317-0042",
+  "createdAt": "2026-03-17T10:30:00",
+  "updatedAt": "2026-03-17T11:05:00"
+}
+```
+
+---
+
+## GET /api/reservations/room/{roomId}
+
+Returns all reservations associated with a specific room, across all statuses.
+
+**Method:** GET  
+**Path:** `/api/reservations/room/{roomId}`  
+**Auth required:** Yes  
+
+### Path parameters
+
+<ParamField path="roomId" type="long" required>
+  The ID of the room whose reservations to retrieve.
+</ParamField>
+
+### Example request
+
+```bash
+curl http://localhost:8080/api/reservations/room/12 \
+  -H "Authorization: Bearer <token>"
+```
+
+### Example response
+
+**Status:** 200 OK — returns a JSON array
+
+```json
+[
+  {
+    "id": 47,
+    "roomId": 12,
+    "userId": 3,
+    "checkInDate": "2026-03-20T15:00:00",
+    "checkOutDate": "2026-03-21T11:00:00",
+    "status": "CONFIRMED",
+    "totalPrice": 250000.0,
+    "specialRequests": null,
+    "confirmationCode": "UBIK-20260317-0042",
+    "createdAt": "2026-03-17T10:30:00",
+    "updatedAt": "2026-03-17T11:05:00"
+  }
+]
+```
+
+---
+
+## GET /api/reservations/room/{roomId}/active
+
+Returns only the active reservations for a room. A reservation is considered active when its status is neither `CANCELLED` nor `CHECKED_OUT`.
+
+**Method:** GET  
+**Path:** `/api/reservations/room/{roomId}/active`  
+**Auth required:** Yes  
+
+### Path parameters
+
+<ParamField path="roomId" type="long" required>
+  The ID of the room.
+</ParamField>
+
+### Example request
+
+```bash
+curl http://localhost:8080/api/reservations/room/12/active \
+  -H "Authorization: Bearer <token>"
+```
+
+---
+
+## GET /api/reservations/user/{userId}
+
+Returns all reservations for a specific user.
+
+**Method:** GET  
+**Path:** `/api/reservations/user/{userId}`  
+**Auth required:** Yes  
+
+### Path parameters
+
+<ParamField path="userId" type="long" required>
+  The internal user ID.
+</ParamField>
+
+### Example request
+
+```bash
+curl http://localhost:8080/api/reservations/user/3 \
+  -H "Authorization: Bearer <token>"
+```
+
+---
+
+## GET /api/reservations/status/{status}
+
+Returns all reservations that match a specific status.
+
+**Method:** GET  
+**Path:** `/api/reservations/status/{status}`  
+**Auth required:** Yes  
+
+### Path parameters
+
+<ParamField path="status" type="string" required>
+  One of the valid reservation statuses: `PENDING`, `CONFIRMED`, `CHECKED_IN`, `CHECKED_OUT`, or `CANCELLED`. Case-insensitive.
+</ParamField>
+
+### Example request
+
+```bash
+curl http://localhost:8080/api/reservations/status/CONFIRMED \
+  -H "Authorization: Bearer <token>"
+```
+
+---
+
+## Response fields
+
+All endpoints return `ReservationResponse` objects with the following fields:
+
+<ResponseField name="id" type="long">
+  Unique reservation ID.
+</ResponseField>
+
+<ResponseField name="roomId" type="long">
+  ID of the reserved room.
+</ResponseField>
+
+<ResponseField name="userId" type="long">
+  ID of the user who made the reservation.
+</ResponseField>
+
+<ResponseField name="checkInDate" type="string (ISO 8601 datetime)">
+  Check-in date and time.
+</ResponseField>
+
+<ResponseField name="checkOutDate" type="string (ISO 8601 datetime)">
+  Check-out date and time.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current reservation status: `PENDING`, `CONFIRMED`, `CHECKED_IN`, `CHECKED_OUT`, or `CANCELLED`.
+</ResponseField>
+
+<ResponseField name="totalPrice" type="double">
+  Total price for the reservation.
+</ResponseField>
+
+<ResponseField name="specialRequests" type="string">
+  Special requests, or `null` if none.
+</ResponseField>
+
+<ResponseField name="confirmationCode" type="string">
+  Server-generated confirmation code.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string (ISO 8601 datetime)">
+  Creation timestamp.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string (ISO 8601 datetime)">
+  Last update timestamp.
+</ResponseField>
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Invalid status value provided to `/status/{status}` |
+| 401 | Missing or invalid authentication token |
+| 404 | Reservation not found for the given ID |

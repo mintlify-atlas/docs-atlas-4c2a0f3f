@@ -1,0 +1,152 @@
+---
+title: "POST /api/payments"
+description: "Create a MercadoPago payment preference for a reservation"
+---
+
+## Overview
+
+Creates a payment preference in MercadoPago for an existing reservation. The response includes an `initPoint` URL that you must redirect the user to so they can complete the payment on MercadoPago's hosted checkout page.
+
+Payment confirmation is asynchronous — MercadoPago calls the [webhook endpoint](/api-reference/payments/webhook) once the user completes or fails payment.
+
+## Payment flow
+
+<Steps>
+  <Step title="Create payment preference">
+    Call `POST /api/payments` with the `reservationId` and `amount`. The service creates a MercadoPago preference and returns the `initPoint` URL.
+  </Step>
+  <Step title="Redirect the user">
+    Redirect the user's browser to the `initPoint` URL. They will complete payment on MercadoPago's hosted page.
+  </Step>
+  <Step title="MercadoPago notifies the backend">
+    After the user pays (or fails), MercadoPago sends a POST to the webhook endpoint. The service fetches the payment details from the MercadoPago API and updates the payment status.
+  </Step>
+  <Step title="Reservation is updated automatically">
+    If payment is `APPROVED`, the reservation is automatically confirmed. If `REJECTED`, the reservation is automatically cancelled.
+  </Step>
+</Steps>
+
+## Request
+
+**Method:** POST  
+**Path:** `/api/payments`  
+**Auth required:** Yes  
+
+<Note>
+  The user's identity is resolved from the `X-User-Id` header, which the gateway forwards automatically from the authenticated JWT. You do not need to include `userId` in the request body.
+</Note>
+
+### Request body
+
+<ParamField body="reservationId" type="long" required>
+  The ID of the reservation this payment is for.
+</ParamField>
+
+<ParamField body="amount" type="double" required>
+  The total amount to charge. Must be a positive number. Should match the reservation's `totalPrice`.
+</ParamField>
+
+<ParamField body="currency" type="string">
+  The currency code. Defaults to `"COP"` if not provided. Example: `"COP"`, `"USD"`.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X POST http://localhost:8080/api/payments \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reservationId": 47,
+    "amount": 250000,
+    "currency": "COP"
+  }'
+```
+
+## Response
+
+**Status:** 201 Created
+
+<ResponseField name="id" type="long">
+  Internal payment ID.
+</ResponseField>
+
+<ResponseField name="reservationId" type="long">
+  The reservation this payment belongs to.
+</ResponseField>
+
+<ResponseField name="userId" type="long">
+  The user who initiated the payment, resolved from the gateway header.
+</ResponseField>
+
+<ResponseField name="amount" type="double">
+  The payment amount.
+</ResponseField>
+
+<ResponseField name="currency" type="string">
+  The currency code used for the payment.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current payment status. Will be `PENDING` immediately after creation.
+</ResponseField>
+
+<ResponseField name="initPoint" type="string">
+  The MercadoPago checkout URL. Redirect the user to this URL to complete payment.
+</ResponseField>
+
+<ResponseField name="mercadoPagoPaymentId" type="string">
+  The MercadoPago payment ID, populated after the webhook is received. `null` at creation time.
+</ResponseField>
+
+<ResponseField name="failureReason" type="string">
+  Populated if the payment was rejected, with a reason from MercadoPago. `null` otherwise.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string (ISO 8601 datetime)">
+  Timestamp of payment creation.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string (ISO 8601 datetime)">
+  Timestamp of last status update.
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "id": 9,
+  "reservationId": 47,
+  "userId": 3,
+  "amount": 250000.0,
+  "currency": "COP",
+  "status": "PENDING",
+  "initPoint": "https://www.mercadopago.com.co/checkout/v1/redirect?pref_id=12345678-abcd-...",
+  "mercadoPagoPaymentId": null,
+  "failureReason": null,
+  "createdAt": "2026-03-17T10:45:00",
+  "updatedAt": "2026-03-17T10:45:00"
+}
+```
+
+<Tip>
+  After receiving the response, immediately redirect the user to `initPoint`. Do not poll for status — payment confirmation arrives asynchronously via the MercadoPago webhook.
+</Tip>
+
+## Payment status values
+
+| Status | Description |
+|--------|-------------|
+| `PENDING` | Payment preference created; user has not yet completed checkout |
+| `APPROVED` | Payment was completed and approved by MercadoPago |
+| `REJECTED` | Payment was declined |
+| `REFUNDED` | Payment was refunded |
+| `CANCELLED` | Payment was cancelled |
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Validation failed — missing `reservationId`, non-positive `amount`, or malformed `X-User-Id` header |
+| 401 | `X-User-Id` header missing; user not authenticated |
+| 500 | MercadoPago API error while creating the preference |

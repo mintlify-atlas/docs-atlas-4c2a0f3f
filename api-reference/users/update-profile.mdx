@@ -1,0 +1,141 @@
+---
+title: "PUT /api/user"
+description: "Update the profile of the currently authenticated user."
+---
+
+## Overview
+
+Updates one or more profile fields for the authenticated user. All fields in the request body are optional — include only the fields you want to change. The username and password cannot be changed through this endpoint.
+
+## Request
+
+**Method:** PUT  
+**Path:** `/api/user`  
+**Auth required:** Yes (Bearer token)
+
+### Headers
+
+| Header | Description |
+|--------|-------------|
+| `Authorization` | `Bearer <jwt>` — required |
+| `X-User-Username` | Injected automatically by the gateway from the JWT `sub` claim. Do not set this manually. |
+
+### Request body
+
+<ParamField body="phoneNumber" type="string">
+  Updated phone number. Maximum 20 characters.
+</ParamField>
+
+<ParamField body="anonymous" type="boolean">
+  Update the anonymous flag for the profile.
+</ParamField>
+
+<ParamField body="email" type="string">
+  Updated email address. Must be a valid email format.
+</ParamField>
+
+<ParamField body="longitude" type="number">
+  Updated geographic longitude. Must be between -180 and 180.
+</ParamField>
+
+<ParamField body="latitude" type="number">
+  Updated geographic latitude. Must be between -90 and 90.
+</ParamField>
+
+<ParamField body="birthDate" type="string">
+  Updated date of birth in `YYYY-MM-DD` format. Must be a date in the past.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X PUT http://localhost:8080/api/user \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phoneNumber": "+573009876543",
+    "email": "john.new@example.com",
+    "anonymous": false,
+    "longitude": -74.0817,
+    "latitude": 4.6097,
+    "birthDate": "1990-05-15"
+  }'
+```
+
+## Response
+
+**Status:** 200 OK
+
+Returns the full updated user profile.
+
+### Response body
+
+<ResponseField name="id" type="integer">
+  Unique numeric identifier of the user.
+</ResponseField>
+
+<ResponseField name="username" type="string">
+  The account username (unchanged).
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  Updated email address.
+</ResponseField>
+
+<ResponseField name="phoneNumber" type="string">
+  Updated phone number, or `null` if not set.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO-8601 datetime when the account was created.
+</ResponseField>
+
+<ResponseField name="anonymous" type="boolean">
+  Updated anonymous flag.
+</ResponseField>
+
+<ResponseField name="roleId" type="integer">
+  Role ID (unchanged).
+</ResponseField>
+
+<ResponseField name="longitude" type="number">
+  Updated geographic longitude, or `null` if not set.
+</ResponseField>
+
+<ResponseField name="latitude" type="number">
+  Updated geographic latitude, or `null` if not set.
+</ResponseField>
+
+<ResponseField name="birthDate" type="string">
+  Updated date of birth in `YYYY-MM-DD` format, or `null`.
+</ResponseField>
+
+<ResponseField name="age" type="integer">
+  Recalculated age in years, or `null` if `birthDate` is not set.
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "id": 42,
+  "username": "johndoe",
+  "email": "john.new@example.com",
+  "phoneNumber": "+573009876543",
+  "createdAt": "2024-01-15T10:30:00",
+  "anonymous": false,
+  "roleId": 2,
+  "longitude": -74.0817,
+  "latitude": 4.6097,
+  "birthDate": "1990-05-15",
+  "age": 34
+}
+```
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Validation error — invalid email format, coordinates out of range, or `birthDate` in the future |
+| 401 | Missing or invalid JWT |
+| 404 | User not found for the username in `X-User-Username` |

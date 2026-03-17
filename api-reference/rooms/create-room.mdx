@@ -1,0 +1,192 @@
+---
+title: "POST /api/rooms"
+description: "Create a new room for a motel. Requires authentication."
+---
+
+## Overview
+
+Creates a new room and associates it with the specified motel. The newly created room defaults to `isAvailable: true`. Authentication is required — the request must include `X-User-Username` and `X-User-Role` headers forwarded by the API gateway.
+
+<Note>
+  The authenticated user should be a `PROPERTY_OWNER` or `ADMIN`. The controller validates that auth headers are present but does not enforce a specific role beyond authentication.
+</Note>
+
+## Request
+
+**Method:** `POST`  
+**Path:** `/api/rooms`  
+**Auth required:** Yes  
+**Required role:** Authenticated (PROPERTY_OWNER or ADMIN)
+
+### Required headers
+
+<ParamField header="X-User-Username" type="string" required>
+  The username of the authenticated user, forwarded by the API gateway.
+</ParamField>
+
+<ParamField header="X-User-Role" type="string" required>
+  The role ID of the authenticated user, forwarded by the API gateway.
+</ParamField>
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token issued by the authentication service.
+</ParamField>
+
+### Request body
+
+<ParamField body="motelId" type="long" required>
+  The ID of the motel this room belongs to.
+</ParamField>
+
+<ParamField body="number" type="string" required>
+  Room number or identifier within the motel. Maximum 20 characters.
+</ParamField>
+
+<ParamField body="roomType" type="string" required>
+  Type/category of the room (e.g., `"Standard"`, `"Suite"`). Maximum 50 characters.
+</ParamField>
+
+<ParamField body="price" type="double" required>
+  Price for the room. Must be greater than zero.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional description of the room. Maximum 500 characters.
+</ParamField>
+
+<ParamField body="imageUrls" type="array of string">
+  List of image URLs for the room. Maximum 15 entries; each URL must be at most 500 characters.
+</ParamField>
+
+<ParamField body="latitude" type="double">
+  Geographic latitude of the room location. Must be between `-90.0` and `90.0`.
+</ParamField>
+
+<ParamField body="longitude" type="double">
+  Geographic longitude of the room location. Must be between `-180.0` and `180.0`.
+</ParamField>
+
+<ParamField body="serviceIds" type="array of long">
+  Optional list of service IDs to associate with the room at creation time.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X POST http://localhost:8080/api/rooms \
+  -H "Authorization: Bearer <token>" \
+  -H "X-User-Username: owner_user" \
+  -H "X-User-Role: <owner-role-id>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "motelId": 10,
+    "number": "201",
+    "roomType": "Suite",
+    "price": 120000.0,
+    "description": "Suite de lujo con jacuzzi y vista al jardín.",
+    "imageUrls": [
+      "https://cdn.example.com/rooms/new/photo1.jpg"
+    ],
+    "latitude": 4.7109,
+    "longitude": -74.0721,
+    "serviceIds": [1, 2, 4]
+  }'
+```
+
+## Response
+
+**Status:** `201 Created`
+
+### Response body fields
+
+<ResponseField name="id" type="long">
+  The system-assigned ID of the newly created room.
+</ResponseField>
+
+<ResponseField name="motelId" type="long">
+  ID of the motel this room belongs to.
+</ResponseField>
+
+<ResponseField name="number" type="string">
+  Room number as provided in the request.
+</ResponseField>
+
+<ResponseField name="roomType" type="string">
+  Room type as provided in the request.
+</ResponseField>
+
+<ResponseField name="price" type="double">
+  Price as provided in the request.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Room description. `null` if not provided.
+</ResponseField>
+
+<ResponseField name="isAvailable" type="boolean">
+  Always `true` for newly created rooms.
+</ResponseField>
+
+<ResponseField name="imageUrls" type="array of string">
+  Image URLs as provided in the request.
+</ResponseField>
+
+<ResponseField name="latitude" type="double">
+  Latitude as provided. `null` if not provided.
+</ResponseField>
+
+<ResponseField name="longitude" type="double">
+  Longitude as provided. `null` if not provided.
+</ResponseField>
+
+<ResponseField name="motelName" type="string">
+  Name of the parent motel, populated from motel data.
+</ResponseField>
+
+<ResponseField name="motelAddress" type="string">
+  Street address of the parent motel.
+</ResponseField>
+
+<ResponseField name="motelCity" type="string">
+  City of the parent motel.
+</ResponseField>
+
+<ResponseField name="motelPhoneNumber" type="string">
+  Contact phone number of the parent motel.
+</ResponseField>
+
+<ResponseField name="serviceIds" type="array of long">
+  Service IDs associated with the room.
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "id": 99,
+  "motelId": 10,
+  "number": "201",
+  "roomType": "Suite",
+  "price": 120000.0,
+  "description": "Suite de lujo con jacuzzi y vista al jardín.",
+  "isAvailable": true,
+  "imageUrls": [
+    "https://cdn.example.com/rooms/new/photo1.jpg"
+  ],
+  "latitude": 4.7109,
+  "longitude": -74.0721,
+  "motelName": "Motel El Descanso",
+  "motelAddress": "Avenida 9 #10-20",
+  "motelCity": "Bogotá",
+  "motelPhoneNumber": "+57 300 000 0000",
+  "serviceIds": [1, 2, 4]
+}
+```
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Validation error — required field missing, price not positive, image count exceeds 15, coordinate out of range, etc. |
+| 401 | Missing `X-User-Username` or `X-User-Role` header |
+| 404 | No motel found with the given `motelId` |

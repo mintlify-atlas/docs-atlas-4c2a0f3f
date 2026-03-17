@@ -1,0 +1,160 @@
+---
+title: "GET /api/motels/{id}"
+description: "Retrieve a single motel by its ID. Public endpoint, no authentication required."
+---
+
+## Overview
+
+Returns the full details of a single motel identified by its numeric ID. This endpoint is publicly accessible.
+
+## Request
+
+**Method:** GET  
+**Path:** `/api/motels/{id}`  
+**Auth required:** No
+
+### Path parameters
+
+<ParamField path="id" type="integer" required>
+  Numeric ID of the motel to retrieve.
+</ParamField>
+
+### Example request
+
+```bash
+curl http://localhost:8080/api/motels/1
+```
+
+## Response
+
+**Status:** 200 OK
+
+### Response body
+
+<ResponseField name="id" type="integer">
+  Unique numeric identifier of the motel.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Name of the motel.
+</ResponseField>
+
+<ResponseField name="address" type="string">
+  Street address.
+</ResponseField>
+
+<ResponseField name="phoneNumber" type="string">
+  Contact phone number, or `null`.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Text description, or `null`.
+</ResponseField>
+
+<ResponseField name="city" type="string">
+  City where the motel is located.
+</ResponseField>
+
+<ResponseField name="propertyId" type="integer">
+  ID of the user (property owner) who registered the motel.
+</ResponseField>
+
+<ResponseField name="dateCreated" type="string">
+  ISO-8601 datetime when the motel record was created.
+</ResponseField>
+
+<ResponseField name="imageUrls" type="array">
+  List of image URL strings (up to 10).
+</ResponseField>
+
+<ResponseField name="latitude" type="number">
+  Geographic latitude, or `null`.
+</ResponseField>
+
+<ResponseField name="longitude" type="number">
+  Geographic longitude, or `null`.
+</ResponseField>
+
+<ResponseField name="approvalStatus" type="string">
+  Current approval state. One of: `PENDING`, `UNDER_REVIEW`, `APPROVED`, `REJECTED`.
+</ResponseField>
+
+<ResponseField name="approvalDate" type="string">
+  ISO-8601 datetime of the most recent approval decision, or `null`.
+</ResponseField>
+
+<ResponseField name="approvedByUserId" type="integer">
+  ID of the admin who made the approval decision, or `null`.
+</ResponseField>
+
+<ResponseField name="rejectionReason" type="string">
+  Reason for rejection if status is `REJECTED`, otherwise `null`.
+</ResponseField>
+
+<ResponseField name="rues" type="string">
+  Registro Único Empresarial y Social number.
+</ResponseField>
+
+<ResponseField name="rnt" type="string">
+  Registro Nacional de Turismo number.
+</ResponseField>
+
+<ResponseField name="ownerDocumentType" type="string">
+  Document type of the owner. One of: `CC`, `NIT`, `CE`, `PASAPORTE`.
+</ResponseField>
+
+<ResponseField name="ownerDocumentNumber" type="string">
+  Owner's document number.
+</ResponseField>
+
+<ResponseField name="ownerFullName" type="string">
+  Full legal name of the owner.
+</ResponseField>
+
+<ResponseField name="legalRepresentativeName" type="string">
+  Legal representative name, or `null`.
+</ResponseField>
+
+<ResponseField name="legalDocumentUrl" type="string">
+  URL to the primary legal document, or `null`.
+</ResponseField>
+
+<ResponseField name="hasCompleteLegalInfo" type="boolean">
+  `true` when all required legal fields are present and non-blank.
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "id": 1,
+  "name": "Motel Las Palmas",
+  "address": "Calle 72 # 45-10",
+  "phoneNumber": "+576012345678",
+  "description": "Comfortable rooms with parking",
+  "city": "Bogota",
+  "propertyId": 7,
+  "dateCreated": "2024-03-01T09:00:00",
+  "imageUrls": ["https://cdn.example.com/motel1.jpg"],
+  "latitude": 4.6501,
+  "longitude": -74.1001,
+  "approvalStatus": "APPROVED",
+  "approvalDate": "2024-03-05T14:00:00",
+  "approvedByUserId": 1,
+  "rejectionReason": null,
+  "rues": "900123456-1",
+  "rnt": "47-RNT-1234",
+  "ownerDocumentType": "CC",
+  "ownerDocumentNumber": "1234567890",
+  "ownerFullName": "Carlos Andres Lopez",
+  "legalRepresentativeName": null,
+  "legalDocumentUrl": "https://cdn.example.com/doc.pdf",
+  "hasCompleteLegalInfo": true
+}
+```
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 404 | No motel found with the given ID |

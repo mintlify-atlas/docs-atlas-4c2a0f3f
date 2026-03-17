@@ -1,0 +1,240 @@
+---
+title: "Reservation Actions"
+description: "PATCH and DELETE endpoints for managing reservation lifecycle transitions"
+---
+
+## Overview
+
+Reservations follow a strict lifecycle. The PATCH endpoints below advance a reservation through its states. Each transition validates the current status before applying the change — invalid transitions return an error.
+
+## Reservation lifecycle
+
+| Transition | From | To | Endpoint |
+|------------|------|-----|----------|
+| Confirm | `PENDING` | `CONFIRMED` | `PATCH /{id}/confirm` |
+| Cancel | `PENDING` or `CONFIRMED` | `CANCELLED` | `PATCH /{id}/cancel` |
+| Check in | `CONFIRMED` | `CHECKED_IN` | `PATCH /{id}/checkin` |
+| Check out | `CHECKED_IN` | `CHECKED_OUT` | `PATCH /{id}/checkout` |
+| Delete | `CANCELLED` only | — | `DELETE /{id}` |
+
+<Note>
+  Payment approval automatically triggers a confirm transition via the payment webhook. Manual confirmation is available for cases where payment is handled outside the system.
+</Note>
+
+---
+
+## PATCH /api/reservations/{id}/confirm
+
+Advances a reservation from `PENDING` to `CONFIRMED`.
+
+**Method:** PATCH  
+**Path:** `/api/reservations/{id}/confirm`  
+**Auth required:** Yes  
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The ID of the reservation to confirm.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X PATCH http://localhost:8080/api/reservations/47/confirm \
+  -H "Authorization: Bearer <token>"
+```
+
+### Example response
+
+**Status:** 200 OK
+
+```json
+{
+  "id": 47,
+  "roomId": 12,
+  "userId": 3,
+  "checkInDate": "2026-03-20T15:00:00",
+  "checkOutDate": "2026-03-21T11:00:00",
+  "status": "CONFIRMED",
+  "totalPrice": 250000.0,
+  "specialRequests": null,
+  "confirmationCode": "UBIK-20260317-0042",
+  "createdAt": "2026-03-17T10:30:00",
+  "updatedAt": "2026-03-17T11:05:00"
+}
+```
+
+---
+
+## PATCH /api/reservations/{id}/cancel
+
+Cancels a reservation. Only reservations in `PENDING` or `CONFIRMED` status can be cancelled.
+
+**Method:** PATCH  
+**Path:** `/api/reservations/{id}/cancel`  
+**Auth required:** Yes  
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The ID of the reservation to cancel.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X PATCH http://localhost:8080/api/reservations/47/cancel \
+  -H "Authorization: Bearer <token>"
+```
+
+### Example response
+
+**Status:** 200 OK
+
+```json
+{
+  "id": 47,
+  "roomId": 12,
+  "userId": 3,
+  "checkInDate": "2026-03-20T15:00:00",
+  "checkOutDate": "2026-03-21T11:00:00",
+  "status": "CANCELLED",
+  "totalPrice": 250000.0,
+  "specialRequests": null,
+  "confirmationCode": "UBIK-20260317-0042",
+  "createdAt": "2026-03-17T10:30:00",
+  "updatedAt": "2026-03-17T11:10:00"
+}
+```
+
+<Warning>
+  Cancelling a reservation that has an approved payment does not automatically trigger a refund. Issue a refund separately via [POST /api/payments/{id}/refund](/api-reference/payments/refund-payment).
+</Warning>
+
+---
+
+## PATCH /api/reservations/{id}/checkin
+
+Marks the guest as checked in. Requires the reservation to be in `CONFIRMED` status.
+
+**Method:** PATCH  
+**Path:** `/api/reservations/{id}/checkin`  
+**Auth required:** Yes  
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The ID of the reservation for which to record check-in.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X PATCH http://localhost:8080/api/reservations/47/checkin \
+  -H "Authorization: Bearer <token>"
+```
+
+### Example response
+
+**Status:** 200 OK
+
+```json
+{
+  "id": 47,
+  "roomId": 12,
+  "userId": 3,
+  "checkInDate": "2026-03-20T15:00:00",
+  "checkOutDate": "2026-03-21T11:00:00",
+  "status": "CHECKED_IN",
+  "totalPrice": 250000.0,
+  "specialRequests": null,
+  "confirmationCode": "UBIK-20260317-0042",
+  "createdAt": "2026-03-17T10:30:00",
+  "updatedAt": "2026-03-20T15:07:00"
+}
+```
+
+---
+
+## PATCH /api/reservations/{id}/checkout
+
+Marks the guest as checked out. Requires the reservation to be in `CHECKED_IN` status.
+
+**Method:** PATCH  
+**Path:** `/api/reservations/{id}/checkout`  
+**Auth required:** Yes  
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The ID of the reservation for which to record check-out.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X PATCH http://localhost:8080/api/reservations/47/checkout \
+  -H "Authorization: Bearer <token>"
+```
+
+### Example response
+
+**Status:** 200 OK
+
+```json
+{
+  "id": 47,
+  "roomId": 12,
+  "userId": 3,
+  "checkInDate": "2026-03-20T15:00:00",
+  "checkOutDate": "2026-03-21T11:00:00",
+  "status": "CHECKED_OUT",
+  "totalPrice": 250000.0,
+  "specialRequests": null,
+  "confirmationCode": "UBIK-20260317-0042",
+  "createdAt": "2026-03-17T10:30:00",
+  "updatedAt": "2026-03-21T11:02:00"
+}
+```
+
+---
+
+## DELETE /api/reservations/{id}
+
+Permanently deletes a reservation record. Only reservations with status `CANCELLED` can be deleted.
+
+**Method:** DELETE  
+**Path:** `/api/reservations/{id}`  
+**Auth required:** Yes  
+
+<Warning>
+  This operation is irreversible. Ensure the reservation is no longer needed before deleting. Only `CANCELLED` reservations are eligible for deletion.
+</Warning>
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The ID of the cancelled reservation to delete.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X DELETE http://localhost:8080/api/reservations/47 \
+  -H "Authorization: Bearer <token>"
+```
+
+### Response
+
+**Status:** 204 No Content — no response body.
+
+---
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Invalid state transition (e.g. trying to check in a `PENDING` reservation) |
+| 401 | Missing or invalid authentication token |
+| 404 | Reservation not found for the given ID |
+| 409 | Reservation is in a state that does not allow this action (e.g. deleting a non-cancelled reservation) |

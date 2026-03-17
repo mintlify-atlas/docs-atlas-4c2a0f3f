@@ -1,0 +1,123 @@
+---
+title: "GET /api/rooms/{id}"
+description: "Retrieve a single room by its ID."
+---
+
+## Overview
+
+Returns the full details of a single room, including denormalized motel information and the list of associated service IDs. This is a public endpoint — no authentication is required.
+
+## Request
+
+**Method:** `GET`  
+**Path:** `/api/rooms/{id}`  
+**Auth required:** No
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The unique identifier of the room to retrieve.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X GET http://localhost:8080/api/rooms/5
+```
+
+## Response
+
+**Status:** `200 OK`
+
+### Response body fields
+
+<ResponseField name="id" type="long">
+  Unique identifier of the room.
+</ResponseField>
+
+<ResponseField name="motelId" type="long">
+  ID of the motel this room belongs to.
+</ResponseField>
+
+<ResponseField name="number" type="string">
+  Room number or identifier within the motel (e.g., `"101"`, `"Suite A"`).
+</ResponseField>
+
+<ResponseField name="roomType" type="string">
+  Type/category of the room (e.g., `"Standard"`, `"Suite"`, `"Deluxe"`).
+</ResponseField>
+
+<ResponseField name="price" type="double">
+  Price per unit for the room.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Optional description of the room. `null` if not set.
+</ResponseField>
+
+<ResponseField name="isAvailable" type="boolean">
+  Whether the room is currently available for booking.
+</ResponseField>
+
+<ResponseField name="imageUrls" type="array of string">
+  List of image URLs for the room. Up to 15 entries. May be empty.
+</ResponseField>
+
+<ResponseField name="latitude" type="double">
+  Geographic latitude. `null` if not set.
+</ResponseField>
+
+<ResponseField name="longitude" type="double">
+  Geographic longitude. `null` if not set.
+</ResponseField>
+
+<ResponseField name="motelName" type="string">
+  Name of the parent motel.
+</ResponseField>
+
+<ResponseField name="motelAddress" type="string">
+  Street address of the parent motel.
+</ResponseField>
+
+<ResponseField name="motelCity" type="string">
+  City of the parent motel.
+</ResponseField>
+
+<ResponseField name="motelPhoneNumber" type="string">
+  Contact phone number of the parent motel.
+</ResponseField>
+
+<ResponseField name="serviceIds" type="array of long">
+  IDs of services associated with this room. Use `GET /api/services/{id}` to retrieve details for each service.
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "id": 5,
+  "motelId": 10,
+  "number": "101",
+  "roomType": "Standard",
+  "price": 45000.0,
+  "description": "Habitación estándar con cama doble y baño privado.",
+  "isAvailable": true,
+  "imageUrls": [
+    "https://cdn.example.com/rooms/5/photo1.jpg",
+    "https://cdn.example.com/rooms/5/photo2.jpg"
+  ],
+  "latitude": 4.7109,
+  "longitude": -74.0721,
+  "motelName": "Motel El Descanso",
+  "motelAddress": "Avenida 9 #10-20",
+  "motelCity": "Bogotá",
+  "motelPhoneNumber": "+57 300 000 0000",
+  "serviceIds": [1, 3]
+}
+```
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 404 | No room found with the given `id` |

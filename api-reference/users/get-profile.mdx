@@ -1,0 +1,103 @@
+---
+title: "GET /api/user"
+description: "Retrieve the profile of the currently authenticated user."
+---
+
+## Overview
+
+Returns the full profile of the authenticated user. The API gateway extracts the username from the JWT and forwards it via the `X-User-Username` header. The service uses that header to look up the user record — no path parameter is needed.
+
+## Request
+
+**Method:** GET  
+**Path:** `/api/user`  
+**Auth required:** Yes (Bearer token)
+
+### Headers
+
+| Header | Description |
+|--------|-------------|
+| `Authorization` | `Bearer <jwt>` — required |
+| `X-User-Username` | Injected automatically by the gateway from the JWT `sub` claim. Do not set this manually. |
+
+### Example request
+
+```bash
+curl -X GET http://localhost:8080/api/user \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
+```
+
+## Response
+
+**Status:** 200 OK
+
+### Response body
+
+<ResponseField name="id" type="integer">
+  Unique numeric identifier of the user.
+</ResponseField>
+
+<ResponseField name="username" type="string">
+  The account username.
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  Email address on file.
+</ResponseField>
+
+<ResponseField name="phoneNumber" type="string">
+  Contact phone number, or `null` if not set.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO-8601 datetime when the account was created (e.g. `2024-01-15T10:30:00`).
+</ResponseField>
+
+<ResponseField name="anonymous" type="boolean">
+  Whether the user's profile is marked as anonymous.
+</ResponseField>
+
+<ResponseField name="roleId" type="integer">
+  Numeric ID of the role assigned to this user.
+</ResponseField>
+
+<ResponseField name="longitude" type="number">
+  Saved geographic longitude, or `null` if not set.
+</ResponseField>
+
+<ResponseField name="latitude" type="number">
+  Saved geographic latitude, or `null` if not set.
+</ResponseField>
+
+<ResponseField name="birthDate" type="string">
+  Date of birth in `YYYY-MM-DD` format, or `null` if not set.
+</ResponseField>
+
+<ResponseField name="age" type="integer">
+  Calculated age in years derived from `birthDate`, or `null` if `birthDate` is not set.
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "id": 42,
+  "username": "johndoe",
+  "email": "john@example.com",
+  "phoneNumber": "+573001234567",
+  "createdAt": "2024-01-15T10:30:00",
+  "anonymous": false,
+  "roleId": 2,
+  "longitude": -74.0817,
+  "latitude": 4.6097,
+  "birthDate": "1990-05-15",
+  "age": 34
+}
+```
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 401 | Missing or invalid JWT |
+| 404 | User not found for the username in `X-User-Username` |

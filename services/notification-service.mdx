@@ -1,0 +1,106 @@
+---
+title: "Notification Service"
+description: "Sends transactional emails on behalf of other services via Gmail SMTP."
+---
+
+## Overview
+
+The Notification Service runs on port **8084** (`notification-service` container). It is a thin, single-purpose service: receive an email request from another internal service and deliver it via Gmail SMTP.
+
+It does not store notification history, manage templates beyond what each caller provides, or authenticate callers — it trusts that only internal services call it over the `ubik-network` Docker network.
+
+## Endpoint
+
+| Method | Path | Auth required | Description |
+|---|---|---|---|
+| `POST` | `/notifications/email` | No | Send a transactional email |
+
+<Warning>
+This endpoint is intentionally unauthenticated. Access control relies on network isolation: the endpoint is only reachable from inside `ubik-network`. Do not expose port 8084 on the Docker host in production.
+</Warning>
+
+### Send email
+
+```bash
+curl -X POST http://localhost:8084/notifications/email \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "guest@example.com",
+    "subject": "Your reservation is confirmed",
+    "body": "Your reservation #ABC123 has been confirmed. Check-in: June 1."
+  }'
+```
+
+Returns HTTP `200 OK` on success. There is no response body.
+
+### `NotificationRequest` fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `to` | string | Yes | Recipient email address |
+| `subject` | string | Yes | Email subject line |
+| `body` | string | Yes | Email body (plain text or HTML) |
+
+## Internal request header
+
+The controller accepts an optional `X-Internal-Request: true` header for identifying calls from sibling services. The enforcement check is currently commented out in the source:
+
+```java
+// if (internalHeader == null || !internalHeader.equals("true")) {
+//     return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+// }
+```
+
+<Note>
+The internal header guard is disabled. Network-level isolation via `ubik-network` is the active access control mechanism. If you need application-level enforcement, re-enable the header check and update all callers (User Management and Payment Service) to send `X-Internal-Request: true`.
+</Note>
+
+## SMTP configuration
+
+The service connects to Gmail's SMTP server using STARTTLS on port 587:
+
+```yaml
+spring:
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connection-timeout: 5000
+          timeout: 5000
+          write-timeout: 5000
+```
+
+<Info>
+Use a Gmail App Password (not your account password). Standard Gmail authentication is blocked for SMTP. Generate an App Password at Google Account → Security → App Passwords.
+</Info>
+
+## Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `MAIL_USERNAME` | Yes | Gmail address used as the SMTP sender |
+| `MAIL_PASSWORD` | Yes | Gmail App Password for SMTP authentication |
+
+## Health check
+
+The mail health indicator is **disabled** in the actuator configuration:
+
+```yaml
+management:
+  health:
+    mail:
+      enabled: false
+```
+
+This prevents the health check from failing when Gmail rate-limits the SMTP connection probe. The service is considered healthy as long as the application starts successfully.
+
+```bash
+curl http://localhost:8084/actuator/health
+```

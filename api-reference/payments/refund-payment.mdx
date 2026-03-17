@@ -1,0 +1,122 @@
+---
+title: "POST /api/payments/{id}/refund"
+description: "Refund an approved payment through MercadoPago"
+---
+
+## Overview
+
+Processes a full refund for a previously approved payment via the MercadoPago API. Only payments with status `APPROVED` can be refunded. After a successful refund, the payment status is updated to `REFUNDED` and the associated reservation is automatically cancelled.
+
+<Warning>
+  This endpoint performs a live refund operation against the MercadoPago API. Ensure the payment ID and intent are correct before calling it — refunds cannot be undone from within this system.
+</Warning>
+
+## Request
+
+**Method:** POST  
+**Path:** `/api/payments/{id}/refund`  
+**Auth required:** Yes  
+**Recommended role:** Admin  
+
+<Note>
+  The endpoint checks for an `X-User-Id` header from the gateway to confirm the caller is authenticated. The code comments indicate this endpoint is intended for admin use. Non-admin users attempting a refund should be denied at the gateway level.
+</Note>
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The internal ID of the payment to refund. The payment must have status `APPROVED`.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X POST http://localhost:8080/api/payments/9/refund \
+  -H "Authorization: Bearer <token>"
+```
+
+No request body is required.
+
+## Response
+
+**Status:** 200 OK
+
+Returns the updated `PaymentResponse` with status `REFUNDED`.
+
+<ResponseField name="id" type="long">
+  Internal payment ID.
+</ResponseField>
+
+<ResponseField name="reservationId" type="long">
+  The reservation associated with this payment.
+</ResponseField>
+
+<ResponseField name="userId" type="long">
+  The user who originally made the payment.
+</ResponseField>
+
+<ResponseField name="amount" type="double">
+  The original payment amount that was refunded.
+</ResponseField>
+
+<ResponseField name="currency" type="string">
+  The currency code.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Will be `REFUNDED` after successful processing.
+</ResponseField>
+
+<ResponseField name="initPoint" type="string">
+  The original MercadoPago checkout URL (unchanged).
+</ResponseField>
+
+<ResponseField name="mercadoPagoPaymentId" type="string">
+  The MercadoPago payment ID used to process the refund.
+</ResponseField>
+
+<ResponseField name="failureReason" type="string">
+  `null` after a successful refund.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string (ISO 8601 datetime)">
+  Original payment creation timestamp.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string (ISO 8601 datetime)">
+  Timestamp of the refund operation.
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "id": 9,
+  "reservationId": 47,
+  "userId": 3,
+  "amount": 250000.0,
+  "currency": "COP",
+  "status": "REFUNDED",
+  "initPoint": "https://www.mercadopago.com.co/checkout/v1/redirect?pref_id=12345678-abcd-...",
+  "mercadoPagoPaymentId": "7891234560",
+  "failureReason": null,
+  "createdAt": "2026-03-17T10:45:00",
+  "updatedAt": "2026-03-17T15:30:00"
+}
+```
+
+## Side effects
+
+A successful refund triggers two automatic operations:
+
+1. **Reservation cancelled** — the reservation associated with the payment is automatically cancelled via an internal call to the Motel Management service.
+2. **MercadoPago refund issued** — the refund is submitted directly to MercadoPago using the stored `mercadoPagoPaymentId`.
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Payment is not in `APPROVED` status and cannot be refunded |
+| 401 | `X-User-Id` header missing; user not authenticated |
+| 404 | Payment not found for the given ID |
+| 500 | MercadoPago API error while processing the refund |

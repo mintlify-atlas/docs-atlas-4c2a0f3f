@@ -1,0 +1,152 @@
+---
+title: "System architecture"
+description: "How Ubik Backend's five microservices are structured, how they communicate, and how JWT identity flows end-to-end."
+---
+
+## Service inventory
+
+| Service | Container name | Port | Responsibility |
+|---|---|---|---|
+| API Gateway | `gateway` | 8080 | JWT validation, request routing, CORS |
+| User Management | `usermanagement-service` | 8081 | Auth, registration, user profiles |
+| Motel Management | `motel-management-service` | 8083 | Motels, rooms, reservations, services |
+| Notification Service | `notification-service` | 8084 | Transactional email via SMTP |
+| Payment Service | `payment-service` | 8085 | MercadoPago payment lifecycle |
+
+All containers are on the `ubik-network` Docker bridge network. Inter-service HTTP calls use the container name as the hostname (e.g., `http://usermanagement-service:8081`).
+
+## Request flow
+
+Every client request enters the system through the gateway on port 8080:
+
+```
+Client
+  │
+  ▼
+Gateway :8080
+  ├─ OPTIONS request? → pass through (CORS preflight)
+  ├─ Public path?     → forward directly to target service
+  └─ Protected path?
+       ├─ No Authorization header → 401 Unauthorized
+       ├─ Invalid / expired JWT   → 401 Unauthorized
+       └─ Valid JWT
+            ├─ Mutate request: add X-User-Username, X-User-Role, X-User-Id headers
+            └─ Forward to target service
+```
+
+<Info>
+Downstream services never validate JWTs themselves. They trust the headers injected by the gateway. This means the gateway is the single point of authentication enforcement — it must always be the entry point for external traffic.
+</Info>
+
+### Public vs. protected paths
+
+The gateway's `JwtAuthenticationFilter` applies the following rules in order:
+
+1. **OPTIONS** requests are always passed through to support CORS preflight.
+2. Paths under `/api/auth/**` are public, **except** `/api/auth/motels/**` which requires authentication.
+3. Actuator endpoints (`/actuator/**`) are public.
+4. `GET` requests to `/api/motels/**`, `/api/rooms/**`, and `/api/services/**` are public.
+5. Everything else requires a valid `Bearer` JWT.
+
+### JWT header propagation
+
+After a JWT is validated, the gateway extracts three claims and adds them as request headers before forwarding:
+
+| Header | JWT claim | Example value |
+|---|---|---|
+| `X-User-Username` | `sub` | `alice` |
+| `X-User-Role` | `role` | `7392841056473829` |
+| `X-User-Id` | `userId` | `42` |
+
+Downstream services read these headers directly from the `ServerWebExchange` — they never parse a JWT.
+
+## Each service's role
+
+### API Gateway
+
+The gateway is a Spring Cloud Gateway application running on Spring WebFlux. Its only jobs are:
+- Validate incoming JWTs using `JwtValidatorPort`
+- Inject identity headers into forwarded requests
+- Apply CORS policy
+- Route requests to the correct downstream service
+
+See [API Gateway](/services/gateway) for the full route table.
+
+### User Management
+
+Owns the user identity domain. Issues JWTs at login. Stores users in PostgreSQL via R2DBC. Follows hexagonal architecture with `UserUseCase` and `UserProfileUseCase` ports at the application boundary.
+
+See [User Management](/services/user-management).
+
+### Motel Management
+
+The largest service. Owns the `Motel`, `Room`, `Reservation`, and `Service` domains. Contains the motel approval workflow (PENDING → UNDER_REVIEW → APPROVED/REJECTED) and delegates image uploads to Cloudinary. Calls User Management via WebClient to resolve usernames to database IDs.
+
+See [Motel Management](/services/motel-management).
+
+### Notification Service
+
+A thin service that sends transactional emails through Gmail SMTP. It exposes a single endpoint (`POST /notifications/email`) that other services call via WebClient when they need to deliver an email (e.g., reservation confirmation, password reset).
+
+See [Notification Service](/services/notification-service).
+
+### Payment Service
+
+Integrates with the MercadoPago Marketplace API. Manages the full payment lifecycle: creating preferences, processing webhook callbacks from MercadoPago, and issuing refunds. Also handles the OAuth flow that links a motel owner's MercadoPago account to their motel for split payments.
+
+See [Payment Service](/services/payment-service).
+
+## Inter-service communication
+
+Services communicate over HTTP using Spring WebFlux's `WebClient`. All calls use Docker internal hostnames:
+
+| Caller | Called service | Purpose |
+|---|---|---|
+| Motel Management | `http://usermanagement-service:8081` | Resolve username → user ID |
+| Payment Service | `http://motel-management-service:8083` | Fetch motel details for payment preferences |
+| Payment Service | `http://notification-service:8084` | Send payment confirmation emails |
+
+<Note>
+All WebClient calls stay inside `ubik-network` and never leave the Docker host. There is no service mesh or message broker — communication is synchronous HTTP.
+</Note>
+
+## Docker networking
+
+```yaml
+networks:
+  ubik-network:
+    driver: bridge
+    name: ubik-network
+```
+
+The `ubik-network` bridge network is declared explicitly with `name: ubik-network` so that the name is predictable regardless of the Compose project name. All five services join this network.
+
+### Startup order
+
+The gateway declares `depends_on` conditions on three services:
+
+```yaml
+depends_on:
+  usermanagement-service:
+    condition: service_healthy
+  motel-management-service:
+    condition: service_healthy
+  notification-service:
+    condition: service_healthy
+```
+
+The payment service similarly waits for `motel-management-service` and `notification-service` to be healthy before starting. Health checks poll each service's `/actuator/health` endpoint.
+
+<Warning>
+The payment service is not listed in the gateway's `depends_on`. If the payment service takes longer to start than the gateway, payment routes may temporarily return connection errors. This resolves automatically once `payment-service` becomes healthy.
+</Warning>
+
+## Technology decisions
+
+<Info>
+**Why reactive (WebFlux + R2DBC)?** The booking platform has bursty I/O: database queries, Cloudinary uploads, external payment API calls. Reactive programming handles high concurrency without proportionally increasing thread count, keeping memory footprint low on constrained cloud VMs.
+</Info>
+
+<Note>
+**Why hexagonal architecture in User Management and Motel Management?** Domain logic is isolated behind `UseCase` and `RepositoryPort` interfaces. Swapping PostgreSQL for another database, or replacing Cloudinary, requires changing only the adapter layer.
+</Note>

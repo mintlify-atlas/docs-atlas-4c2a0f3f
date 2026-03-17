@@ -1,0 +1,124 @@
+---
+title: "POST /api/admin/motels/{id}/approve"
+description: "Approve a motel registration. The motel must have complete legal information before it can be approved."
+---
+
+## Overview
+
+Approves a motel, transitioning its approval status to `APPROVED`. The motel must have complete legal information on file; attempting to approve one without it returns `422 Unprocessable Entity`. If the motel is already approved the operation returns `409 Conflict`.
+
+Once approved, the motel becomes visible to regular users and property owners can begin managing rooms.
+
+<Note>
+  This endpoint requires the `ADMIN` role. The approving admin's user ID is recorded on the motel as `approvedByUserId`.
+</Note>
+
+## Request
+
+**Method:** `POST`  
+**Path:** `/api/admin/motels/{id}/approve`  
+**Auth required:** Yes  
+**Required role:** `ADMIN`
+
+### Required headers
+
+<ParamField header="X-User-Role" type="string" required>
+  The role ID for the authenticated user. Must match the configured admin role ID.
+</ParamField>
+
+<ParamField header="X-User-Username" type="string" required>
+  The username of the authenticated admin user, forwarded by the API gateway.
+</ParamField>
+
+<ParamField header="X-User-Id" type="string" required>
+  The numeric user ID of the authenticated admin. Stored as the performer of the approval action.
+</ParamField>
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token issued by the authentication service.
+</ParamField>
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The unique identifier of the motel to approve.
+</ParamField>
+
+### Request body
+
+The request body is optional. When provided it must be valid JSON.
+
+<ParamField body="comments" type="string">
+  Optional admin comments about the approval. Maximum 500 characters.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X POST http://localhost:8080/api/admin/motels/42/approve \
+  -H "Authorization: Bearer <token>" \
+  -H "X-User-Role: <admin-role-id>" \
+  -H "X-User-Username: admin_user" \
+  -H "X-User-Id: 1" \
+  -H "Content-Type: application/json" \
+  -d '{"comments": "All legal documents verified and in order."}'
+```
+
+## Response
+
+**Status:** `200 OK`
+
+### Response body fields
+
+<ResponseField name="motelId" type="long">
+  The ID of the motel that was approved.
+</ResponseField>
+
+<ResponseField name="motelName" type="string">
+  The name of the motel.
+</ResponseField>
+
+<ResponseField name="previousStatus" type="string">
+  The approval status the motel had before this operation (e.g., `PENDING`, `UNDER_REVIEW`).
+</ResponseField>
+
+<ResponseField name="newStatus" type="string">
+  The approval status after the operation. Always `APPROVED` on success.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable description of the operation result. For approvals, returns `"Motel aprobado exitosamente"`.
+</ResponseField>
+
+<ResponseField name="operationDate" type="string (ISO-8601 datetime)">
+  Timestamp of when the operation was performed.
+</ResponseField>
+
+<ResponseField name="performedByUserId" type="long">
+  The user ID of the admin who performed the approval.
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "motelId": 42,
+  "motelName": "Hotel Vista Mar",
+  "previousStatus": "PENDING",
+  "newStatus": "APPROVED",
+  "message": "Motel aprobado exitosamente",
+  "operationDate": "2026-03-17T10:45:00",
+  "performedByUserId": 1
+}
+```
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | `X-User-Id` header is present but not a valid number, or request body fails validation (e.g., `comments` exceeds 500 characters) |
+| 401 | Missing `X-User-Role` or `X-User-Username` header |
+| 403 | Authenticated user does not have the admin role |
+| 404 | No motel found with the given `id` |
+| 409 | The motel is already in `APPROVED` status |
+| 422 | The motel does not have complete legal information and cannot be approved |

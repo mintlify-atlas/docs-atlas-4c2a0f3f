@@ -1,0 +1,121 @@
+---
+title: "POST /api/admin/motels/{id}/reject"
+description: "Reject a motel registration with a mandatory reason explaining the decision."
+---
+
+## Overview
+
+Rejects a motel, transitioning its approval status to `REJECTED`. A rejection reason is required and must be between 10 and 1000 characters. If the motel is already in `REJECTED` status the operation returns `409 Conflict`.
+
+The reason is stored on the motel and returned in the response `message` field so that the property owner can understand why the registration was denied.
+
+<Note>
+  This endpoint requires the `ADMIN` role. The rejecting admin's user ID is recorded on the motel.
+</Note>
+
+## Request
+
+**Method:** `POST`  
+**Path:** `/api/admin/motels/{id}/reject`  
+**Auth required:** Yes  
+**Required role:** `ADMIN`
+
+### Required headers
+
+<ParamField header="X-User-Role" type="string" required>
+  The role ID for the authenticated user. Must match the configured admin role ID.
+</ParamField>
+
+<ParamField header="X-User-Username" type="string" required>
+  The username of the authenticated admin user, forwarded by the API gateway.
+</ParamField>
+
+<ParamField header="X-User-Id" type="string" required>
+  The numeric user ID of the authenticated admin. Stored as the performer of the rejection action.
+</ParamField>
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token issued by the authentication service.
+</ParamField>
+
+### Path parameters
+
+<ParamField path="id" type="long" required>
+  The unique identifier of the motel to reject.
+</ParamField>
+
+### Request body
+
+<ParamField body="reason" type="string" required>
+  The reason for rejecting the motel. Must be between **10 and 1000 characters**. This value is mandatory — omitting it or sending a blank string returns `400 Bad Request`.
+</ParamField>
+
+### Example request
+
+```bash
+curl -X POST http://localhost:8080/api/admin/motels/42/reject \
+  -H "Authorization: Bearer <token>" \
+  -H "X-User-Role: <admin-role-id>" \
+  -H "X-User-Username: admin_user" \
+  -H "X-User-Id: 1" \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "The submitted legal documents are expired. Please resubmit with valid documentation."}'
+```
+
+## Response
+
+**Status:** `200 OK`
+
+### Response body fields
+
+<ResponseField name="motelId" type="long">
+  The ID of the motel that was rejected.
+</ResponseField>
+
+<ResponseField name="motelName" type="string">
+  The name of the motel.
+</ResponseField>
+
+<ResponseField name="previousStatus" type="string">
+  The approval status the motel had before this operation (e.g., `PENDING`, `UNDER_REVIEW`, `APPROVED`).
+</ResponseField>
+
+<ResponseField name="newStatus" type="string">
+  The approval status after the operation. Always `REJECTED` on success.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Contains the rejection reason prefixed with `"Motel rechazado: "`. For example: `"Motel rechazado: The submitted legal documents are expired."`
+</ResponseField>
+
+<ResponseField name="operationDate" type="string (ISO-8601 datetime)">
+  Timestamp of when the operation was performed.
+</ResponseField>
+
+<ResponseField name="performedByUserId" type="long">
+  The user ID of the admin who performed the rejection.
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "motelId": 42,
+  "motelName": "Hotel Vista Mar",
+  "previousStatus": "PENDING",
+  "newStatus": "REJECTED",
+  "message": "Motel rechazado: The submitted legal documents are expired. Please resubmit with valid documentation.",
+  "operationDate": "2026-03-17T11:30:00",
+  "performedByUserId": 1
+}
+```
+
+## Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | `reason` is blank, shorter than 10 characters, longer than 1000 characters, or `X-User-Id` is not a valid number |
+| 401 | Missing `X-User-Role` or `X-User-Username` header |
+| 403 | Authenticated user does not have the admin role |
+| 404 | No motel found with the given `id` |
+| 409 | The motel is already in `REJECTED` status |
